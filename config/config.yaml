@@ -1,0 +1,551 @@
+
+#This file controls the settings of the entire synthetic image generation pipeline.
+#Instead of changing Python code whenever we want to modify a setting, our Python modules will read the values from here.
+
+project:
+  name: "Aerial_Country_Flag_Detection"
+  version: "1.1"
+  task: "country_specific_object_detection"
+  framework: "YOLO"
+  description: "Synthetic overhead drone imagery for national flag detection"
+
+  random_seed: 42 #a different seed will generate a different set of images
+  reproducible: true
+
+camera:
+  model: "SIYI A8 mini"
+
+  active_sensor: "RGB"
+  rgb_sensor: "Sony 1/1.7-inch CMOS"
+  sensor_format: "1/1.7 inch"
+
+  # Default UHD video frame size; verify this against frames recorded by the camera.
+  native_resolution: [3840, 2160]
+  output_resolution: [3840, 2160]
+  resolution_label: "4K UHD"
+
+  resize_mode: "none"
+  digital_zoom: 1.0
+
+  # Camera projection
+  projection: "perspective"
+  viewpoint: "nadir"
+  direction: "straight_down"
+
+  # Manufacturer-reported values
+  hfov_deg: 81.0
+  dfov_deg: 93.0
+
+  # Validate the FOV and calibration against real frames before production.
+  vfov_deg: null
+
+  # Blender camera configuration
+  blender:
+    sensor_fit: "HORIZONTAL"
+    horizontal_fov_deg: 81.0
+
+  # Physical calibration
+  pixel_size_um: null
+  physical_focal_length_mm: null
+  equivalent_focal_length_mm: 21.0
+  sensor_width_mm: null
+  sensor_height_mm: null
+
+  intrinsic_matrix: null
+  distortion_coefficients: null
+
+  # Camera orientation
+  gimbal_stabilized: true
+
+  # Nominal orientation is nadir; synthesis applies the pitch/roll ranges below.
+  off_nadir_angle_deg: [0, 0]
+  pitch_variation_deg: [-10, 10]
+  roll_variation_deg: [-10, 10]
+
+  # Rotation around optical axis
+  yaw_variation_deg: [0, 360]
+
+  shutter_type: "rolling"
+  focus_type: null
+
+  stereo:
+    enabled: false
+
+flight:
+  altitude_m:
+    min: 50
+    max: 100
+
+  altitude_sampling: "uniform"
+  camera_height_reference: "ground_level"
+  ground:
+    orientation: "horizontal"
+    extent_m: [250, 250]
+    terrain_scale: "fixed_real_world_scale"
+  camera_position:
+    x: 0
+    y: 0
+    z: "altitude_m"
+
+flag:
+  object_type: "national_flag_sheet"
+
+  orientation: "horizontal"
+  surface_alignment: "parallel_to_ground"
+
+  pole_enabled: false
+  mounted_on_ground: true
+
+  # Ground-laid 2:1 flag sheets; change these if the deployment uses other sizes.
+  physical_width_m: 2.0
+  physical_height_m: 1.0
+  physical_aspect_ratio: 2.0
+
+  # Keep flag artwork proportional on the 2:1 sheet instead of stretching it.
+  country_specific_texture: true
+  country_specific_aspect_ratio: false
+  design_mapping: "preserve_aspect_ratio"
+  unused_area_handling: "flag_background_fill"
+
+  preserve_emblems: true
+  preserve_country_design: true
+
+  material: "fabric"
+
+  fabric:
+    enabled: true
+
+    wrinkles: true
+    folds: true
+
+    deformation_strength: [0.0, 0.15]
+    maximum_surface_displacement_m: 0.03
+
+    preserve_flag_colors: true
+    preserve_flag_patterns: true
+
+  placement:
+    random_position: true
+    avoid_overlapping_flags: true
+
+    allow_partial_image_truncation: true
+    avoid_image_truncation: false
+
+    minimum_visible_fraction: 0.50
+
+  shadows:
+    enabled: true
+    cast_on_ground: true
+    randomize: true
+
+
+countries:
+  class_mode: "country"
+
+  class_names:
+    - egypt
+    - united_states
+    - united_kingdom
+    - france
+    - germany
+    - italy
+    - spain
+    - portugal
+    - netherlands
+    - belgium
+    - switzerland
+    - sweden
+    - norway
+    - denmark
+    - finland
+    - poland
+    - ukraine
+    - turkey
+    - saudi_arabia
+    - united_arab_emirates
+    - qatar
+    - japan
+    - china
+    - india
+    - brazil
+    - canada
+    - australia
+    - south_korea
+
+  preserve_class_order: true
+
+  total_classes: 28
+
+  sampling:
+    strategy: "balanced"
+    equal_probability: true
+
+  texture_lookup_directory: "assets/flags"
+
+  texture_file_format: "PNG"
+
+  texture_mapping:
+    match_by_country_name: true
+    validate_missing_textures: true
+
+
+synthesis:
+  enabled: true
+
+  engine: "Blender"
+  rendering_engine: "BLENDER_EEVEE_NEXT"
+
+  rendering_mode: "photorealistic"
+
+  image_width: 3840
+  image_height: 2160
+
+  image_format: "PNG"
+  color_space: "RGB"
+  bit_depth: 8
+
+  # Initial testing and production
+  test_images: 50
+  production_images: 10000
+
+  images_per_scene: 5
+
+  random_seed: 42
+  reproducible: true
+
+  # Physical geometry determines projected pixel size.
+  pixel_size_control: "camera_geometry"
+
+  # Approximate for a 2 m x 1 m flag, 81-degree HFOV, and 3840x2160 output.
+  expected_projected_width_px: [45, 90]
+  expected_projected_height_px: [22.5, 45]
+
+  do_not_override_physical_projection: true
+
+
+  camera_variation:
+    enabled: true
+
+    altitude_m: [50, 100]
+
+    viewpoint: "nadir"
+
+    pitch_variation_deg: [-10, 10]
+    roll_variation_deg: [-10, 10]
+    yaw_variation_deg: [0, 360]
+
+    focal_length_variation: false
+    digital_zoom_variation: false
+
+
+
+  environment:
+    primary_environment: "desert_airfield"
+
+    randomize: true
+
+    background_types:
+      - desert_sand
+      - compacted_soil
+      - dry_gravel
+      - sandy_ground
+      - sparse_desert_vegetation
+      - concrete_airfield
+
+    background_distribution:
+      desert_sand: 0.40
+      compacted_soil: 0.20
+      dry_gravel: 0.15
+      sandy_ground: 0.10
+      sparse_desert_vegetation: 0.10
+      concrete_airfield: 0.05
+
+    terrain:
+      randomize: true
+      scale: "fixed_real_world_scale"
+      texture_resolution: "altitude_appropriate"
+
+      include_small_surface_details: true
+      include_ground_irregularities: true
+
+
+    lighting:
+      randomize: true
+
+      conditions:
+        - clear_sun
+        - soft_sun
+        - cloudy
+        - overcast
+
+      sun_angle_variation: true
+      sun_intensity_variation: true
+      ambient_light_variation: true
+
+      shadows:
+        enabled: true
+        randomize: true
+
+
+image_effects:
+
+  sensor_noise:
+    enabled: false
+    model: "gaussian_plus_shot_noise"
+    calibration_status: "pending"
+    intensity: null
+
+  motion_blur:
+    enabled: false
+    probability: 0.30
+    model: "directional"
+    calibration_status: "pending"
+    intensity: null
+
+  brightness_variation:
+    enabled: true
+    range: [0.80, 1.20]
+
+  contrast_variation:
+    enabled: true
+    range: [0.85, 1.15]
+
+  defocus_blur:
+    enabled: false
+    probability: 0.05
+    calibration_status: "pending"
+
+  compression:
+    enabled: true
+
+    master_format: "PNG"
+
+    final_format: "JPEG"
+    jpeg_quality: 92
+
+    # Enable only after matching the compression of the real inference footage.
+    simulate_video_compression: false
+    video_codec: "H264"
+    video_profile: "high"
+
+  lens_distortion:
+    enabled: false
+    application: "opencv_postprocessing"
+
+    calibration_required: true
+
+    coefficients:
+      k1: null
+      k2: null
+      p1: null
+      p2: null
+      k3: null
+
+dataset:
+  output_directory: "dataset"
+
+  directories:
+    images: "images"
+    labels: "labels"
+    previews: "previews"
+    metadata: "metadata"
+    logs: "generation_logs"
+
+  image_resolution: [3840, 2160]
+
+  image_naming:
+    prefix: "flag"
+    zero_padding: 6
+    include_scene_id: true
+
+  negative_image_ratio: 0.20
+
+  split:
+    train: 0.70
+    val: 0.20
+    test: 0.10
+
+    shuffle: true
+
+    split_by_scene: true
+    prevent_scene_leakage: true
+
+  preserve_original_4k: true
+
+
+annotations:
+  format: "YOLO"
+
+  enabled: true
+
+  class_mode: "country"
+
+  class_names_reference: "countries.class_names"
+
+  generate_bounding_boxes: true
+
+  annotation_source: "projected_visible_flag_mesh"
+
+  normalize_coordinates: true
+  clip_boxes: true
+  separate_label_files: true
+
+  annotate_visible_flags: true
+  ignore_fully_occluded_flags: true
+
+  minimum_visible_fraction: 0.50
+
+  minimum_bbox_width_px: 10
+  minimum_bbox_height_px: 5
+
+  include_shadows_in_bbox: false
+
+  empty_labels_for_negative_images: true
+
+  validate_labels: true
+
+  label_format:
+    fields:
+      - class_id
+      - x_center
+      - y_center
+      - width
+      - height
+
+    coordinate_range: [0.0, 1.0]
+
+
+quality_control:
+  enabled: true
+
+  verify_image_resolution: true
+  verify_image_label_pairs: true
+  verify_bbox_coordinates: true
+  verify_class_ids: true
+
+  verify_country_texture_mapping: true
+  verify_projected_flag_size: true
+
+  detect_duplicate_images: true
+  reject_corrupted_images: true
+
+  verify_empty_negative_labels: true
+
+  save_generation_metadata: true
+
+  preview:
+    enabled: true
+
+    draw_bounding_boxes: true
+    show_country_names: true
+    show_class_ids: true
+
+    show_projected_pixel_dimensions: true
+    show_camera_altitude: true
+    show_background_type: true
+
+
+previews:
+  enabled: true
+
+  output_directory: "dataset/previews"
+
+  save_original: true
+  save_annotated: true
+
+  save_country_samples: true
+  save_altitude_samples: true
+
+  preview_images_per_country: 5
+
+  overlay:
+    bounding_boxes: true
+    class_names: true
+    pixel_dimensions: true
+
+
+metadata:
+  enabled: true
+
+  output_directory: "dataset/metadata"
+
+  save_camera_parameters: true
+  save_altitude: true
+  save_country_identity: true
+
+  save_flag_dimensions: true
+  save_projected_pixel_dimensions: true
+
+  save_background_type: true
+  save_lighting_conditions: true
+  save_random_seed: true
+
+  save_scene_id: true
+
+  format: "JSON"
+
+
+training:
+  preserve_original_4k: true
+
+  framework: "YOLO"
+
+  candidate_image_sizes:
+    - 2048
+    - 1280
+    - 1024
+
+  preferred_image_size: 2048
+
+  preprocessing:
+    resize_mode: "letterbox"
+    preserve_aspect_ratio: true
+    allow_stretching: false
+
+  evaluate_by_country: true
+  evaluate_by_object_size: true
+
+  object_size_groups:
+    small:
+      width_px: [45, 59]
+
+    medium:
+      width_px: [60, 74]
+
+    large:
+      width_px: [75, 90]
+
+  tiling:
+    enabled: true
+
+    tile_size: 1024
+    overlap: 0.20
+
+    preserve_annotations: true
+    clip_boxes_to_tiles: true
+
+  inference:
+    evaluate_tiled_inference: true
+    evaluate_full_image_inference: true
+
+
+logging:
+  enabled: true
+
+  output_directory: "dataset/generation_logs"
+
+  save_generation_report: true
+  save_errors: true
+  save_warnings: true
+
+  report_format: "CSV"
+
+  log:
+    scene_id: true
+    image_name: true
+    country_class: true
+    camera_altitude: true
+    projected_width_px: true
+    projected_height_px: true
+    background_type: true
+    generation_status: true
