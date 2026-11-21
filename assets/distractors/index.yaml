@@ -1,0 +1,11 @@
+# Look-alike objects pasted into frames WITHOUT a label (generator/distractors.py).
+#
+#   long_m  [min, max] real length of the long side, in metres
+#   crop    [x0, y0, x1, y1] as fractions of the image: the clean part to use.
+#           These photos have a checkerboard PAINTED around the object (not real
+#           transparency), so only the centre of the object is used.
+
+- {file: "blue tarpaulin .png", long_m: [2.0, 4.0], crop: [0.0, 0.0, 1.0, 1.0]}
+- {file: "Beige frayed fabric.png", long_m: [0.8, 2.0], crop: [0.10, 0.30, 0.90, 0.64]}
+- {file: "Torn green and beige fabric.png", long_m: [1.0, 2.2], crop: [0.10, 0.15, 0.92, 0.75]}
+- {file: "plastic sheet.png", long_m: [1.0, 3.0], crop: [0.12, 0.12, 0.90, 0.88]}

@@ -549,3 +549,89 @@ logging:
     projected_height_px: true
     background_type: true
     generation_status: true
+
+
+# =============================================================================
+# generator: settings for the Python/OpenCV generator (generate.py).
+# The spec above gives the physical facts (camera, altitude, flag size, classes,
+# split, label rules). This section only fills in what the spec leaves open.
+# Every size is in METRES, every probability is 0..1.
+# =============================================================================
+generator:
+
+  # --- Realism layers: on/off switches ---------------------------------------
+  # Phase 1 = a clean, correctly scaled generator. Switch layers on one by one
+  # and check each against real SIYI frames before keeping it.
+  # Layers the spec already switches are NOT here: fabric folds (flag.fabric),
+  # flag shadows (flag.shadows), noise / motion / defocus / brightness /
+  # contrast (image_effects.*.enabled).
+  layers:
+    colour_match: true        # pull flag colours toward the scene's colour cast + light
+    scene_shadows: false      # big soft shadows of buildings/poles across the frame
+    flag_fading: false        # sun-bleached flags
+    flag_dirt: false          # sand / dust on the flags
+    runway_markings: false    # painted lines on the ground
+    distractors: false        # unlabelled look-alike objects (tarps, cloth, cars)
+    haze: false
+    vignette: false
+    gamma: false
+
+  supersample: 4              # objects are drawn 4x larger, then shrunk (anti-aliasing)
+
+  # P(number of flags) in a frame that is NOT a negative image.
+  # Negatives come from dataset.negative_image_ratio.
+  flags_per_image: {1: 0.25, 2: 0.30, 3: 0.25, 4: 0.20}
+  partial_flag_prob: 0.10     # chance a flag straddles the frame edge
+  min_spacing_m: 1.0          # flags / distractors never closer than this
+
+  # Class name -> file name in assets/flags, when the two differ.
+  flag_files:
+    united_states: america
+
+  backgrounds:
+    directory: assets/backgrounds   # images + index.yaml (GSD, group, type per file)
+    max_upsample: 2.0               # avoid a background that must be enlarged more than 2x
+    color_cast: 0.04                # +-4 % per channel
+    markings_prob: 0.30             # used when layers.runway_markings is on
+    marking_width_m: [0.45, 1.8]
+    marking_length_m: [10, 40]
+
+  flag_effects:
+    fade_prob: 0.5
+    fade_strength: [0.05, 0.35]
+    dirt_prob: 0.4
+    dirt_strength: [0.05, 0.30]
+    fold_prob: 0.8                  # fold depth comes from flag.fabric.maximum_surface_displacement_m
+    fold_shading: [0.05, 0.25]      # brightness change across a fold
+    tilt_jitter: 0.04               # corner jitter: uneven ground / camera not exactly nadir
+    edge_feather_px: 0.6            # fabric edges are never razor sharp
+
+  compose:
+    tint_strength: 0.35
+    light_gain: [0.85, 1.10]
+    contact_shadow_prob: 0.7        # thin shadow under the flag edge (flag.shadows)
+    contact_shadow_strength: [0.15, 0.40]
+    contact_shadow_offset_m: [0.02, 0.10]
+    cast_shadow_prob: 0.35          # used when layers.scene_shadows is on
+    cast_shadow_strength: [0.30, 0.60]
+
+  distractors:
+    directory: assets/distractors   # images + index.yaml (real size + clean crop per file)
+    count: [0, 3]
+    kinds: {image: 0.40, tarp: 0.15, cloth: 0.15, bag: 0.10, car: 0.10, striped_sheet: 0.10}
+
+  # Ranges used when the matching image_effects switch is on (spec intensities are
+  # still null = "calibration pending"). Replace with values measured on SIYI frames.
+  camera_sim:
+    haze_prob: 0.30
+    haze_strength: [0.0, 0.08]
+    vignette_strength: [0.0, 0.25]
+    defocus_sigma_px: [0.3, 1.2]
+    speed_mps: [0, 15]              # 0 = hovering
+    exposure_s: [0.0005, 0.004]     # 1/2000 s .. 1/250 s
+    read_noise: [0.002, 0.010]
+    shot_noise: [0.0005, 0.004]
+    gamma: [0.9, 1.1]
+
+  keep_empty_tile_prob: 0.10        # most tiles with no flag are dropped
+  preview_frames: 12                # annotated previews written per run

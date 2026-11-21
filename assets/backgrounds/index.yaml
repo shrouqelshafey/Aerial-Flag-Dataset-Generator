@@ -1,0 +1,28 @@
+# Ground photos for the generator (generator/background.py).
+#
+#   gsd_m  metres of ground per pixel of THIS file. The generator resizes every
+#          photo to the frame's GSD (2.2 cm/px at 50 m .. 4.4 cm/px at 100 m), so a
+#          wrong value here = bushes and stones at the wrong size next to the flag.
+#   group  where/when it was shot. Train/val/test are split by group.
+#   type   one of synthesis.environment.background_types in config/config.yaml.
+#   use    false = keep the file but never use it.
+#
+# All gsd_m values below are ESTIMATES made by eye from the size of bushes, trees
+# and vehicle tracks (bush ~1-2 m, tree ~3-5 m, track ~3 m). Replace them with the
+# real GSD when the source is known, and prefer real drone photos at 2-5 cm/px.
+# A photo much sharper than the frame (gsd_m 0.01-0.02) covers only 15-30 m of
+# ground, so the frame is filled with many random patches of it: textures repeat.
+
+- {file: "Dry desert with sparse vegetation.png", gsd_m: 0.015, group: dry_desert_veg, type: sparse_desert_vegetation}
+- {file: "Dry soil and sparse vegetation.png", gsd_m: 0.02, group: dry_soil_veg, type: compacted_soil}
+- {file: "Mixed sand and vegetation.png", gsd_m: 0.05, group: mixed_sand_veg, type: sparse_desert_vegetation}
+- {file: "Rocky and gravel terrain.png", gsd_m: 0.05, group: rocky_gravel, type: dry_gravel}
+- {file: "Rocky desert.png", gsd_m: 0.03, group: rocky_desert, type: desert_sand}
+- {file: "Sandy ground+sparse bushes.png", gsd_m: 0.03, group: sandy_bushes, type: sandy_ground}
+- {file: "Sparse trees in an open dry field.png", gsd_m: 0.05, group: dry_field_trees, type: compacted_soil}
+- {file: "rocky terrain with scattered green vegetation.png", gsd_m: 0.06, group: rocky_green, type: dry_gravel}
+- {file: "sandy_desert.png", gsd_m: 0.01, group: sandy_desert, type: desert_sand}
+
+# Not used:
+- {file: "Western Desert.png", gsd_m: 0.5, group: western_desert, type: desert_sand, use: false}   # satellite scale (~0.5 m/px): 10x too coarse for 50-100 m
+- {file: "germany.png", gsd_m: 0.05, group: none, type: none, use: false}                         # this is the German flag, not ground
