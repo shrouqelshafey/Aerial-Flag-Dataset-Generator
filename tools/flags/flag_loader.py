@@ -2,7 +2,6 @@ from pathlib import Path
 from PIL import Image, ImageOps
 import numpy as np
 
-print("I AM RUNNING FLAG_LOADER.PY")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FLAGS_FOLDER = PROJECT_ROOT / "assets" / "flags"
 
@@ -88,7 +87,6 @@ def flag_to_array(flag):
 
     return np.array(flag, dtype=np.uint8)
 
-# It loads the flags and prints a short summary.
 if __name__ == "__main__":
     flags = load_all_flags()
     print(f"\nLoaded {len(flags)} flags.\n")
