@@ -224,3 +224,4 @@ __marimo__/
 
 # Generated datasets (regenerate with generate.py)
 dataset/
+assets/batch_backgrounds_demo/

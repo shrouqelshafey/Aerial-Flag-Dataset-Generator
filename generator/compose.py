@@ -39,10 +39,13 @@ def object_corners(center, angle_deg, long_px, short_px, rng, tilt):
     return base @ R.T + jitter + np.asarray(center, np.float32)
 
 
-def place_object(frame, obj, dst, ss, rng, cc, scene, gsd, shadow=True):
+def place_object(frame, obj, dst, ss, rng, cc, scene, gsd, shadow=True, match=None):
     """Warp `obj` (RenderedObject) so its corners land on `dst` and blend it into `frame`.
 
     frame: float32 BGR, modified in place.  dst: (4, 2) corners in frame pixels.
+    match: optional camera look of a REAL background photo (see generator/match.py):
+           {"blur_sigma": px, "black": (3,) black level, "noise": sigma}. The object
+           gets the same lens blur, haze and sensor noise as the photo around it.
     """
     h, w = frame.shape[:2]
     Hm = cv2.getPerspectiveTransform(obj.corners, (dst * ss).astype(np.float32))
@@ -51,10 +54,12 @@ def place_object(frame, obj, dst, ss, rng, cc, scene, gsd, shadow=True):
     Hc, Wc = obj.canvas.shape[:2]
     cc_pts = np.array([[[0, 0]], [[Wc, 0]], [[Wc, Hc]], [[0, Hc]]], np.float32)
     box = cv2.perspectiveTransform(cc_pts, Hm).reshape(-1, 2) / ss
-    x0 = max(0, int(math.floor(box[:, 0].min())) - 1)
-    y0 = max(0, int(math.floor(box[:, 1].min())) - 1)
-    x1 = min(w, int(math.ceil(box[:, 0].max())) + 1)
-    y1 = min(h, int(math.ceil(box[:, 1].max())) + 1)
+    blur = float(match.get("blur_sigma", 0.0)) if match else 0.0
+    m = 1 + int(math.ceil(3 * blur))                         # room for the blur to spread
+    x0 = max(0, int(math.floor(box[:, 0].min())) - m)
+    y0 = max(0, int(math.floor(box[:, 1].min())) - m)
+    x1 = min(w, int(math.ceil(box[:, 0].max())) + m)
+    y1 = min(h, int(math.ceil(box[:, 1].max())) + m)
     if x1 <= x0 or y1 <= y0:
         return {"drawn": False}
 
@@ -64,11 +69,18 @@ def place_object(frame, obj, dst, ss, rng, cc, scene, gsd, shadow=True):
     patch = cv2.warpPerspective(obj.canvas, T @ Hm, (pw * ss, ph * ss), flags=cv2.INTER_LINEAR,
                                 borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     patch = cv2.resize(patch, (pw, ph), interpolation=cv2.INTER_AREA)
+    info = {"drawn": True}
+    if blur > 0:          # lens softness; blurring premultiplied RGBA = no dark halo
+        patch = cv2.GaussianBlur(patch, (0, 0), blur)
+        info["blur_sigma_px"] = round(blur, 3)
     alpha = patch[..., 3:4]
     rgb = patch[..., :3] * scene.tint * scene.light          # premultiplied colour
+    if match is not None and match.get("black") is not None:
+        # haze / airlight: the photo's darkest value is lifted, so is the flag's
+        b = np.asarray(match["black"], np.float32)
+        rgb = rgb * (1 - b) + alpha * b
 
     region = frame[y0:y1, x0:x1]
-    info = {"drawn": True}
     if shadow and rng.random() < cc["contact_shadow_prob"]:
         off = uniform(rng, cc["contact_shadow_offset_m"]) / gsd
         k = uniform(rng, cc["contact_shadow_strength"])
@@ -79,6 +91,10 @@ def place_object(frame, obj, dst, ss, rng, cc, scene, gsd, shadow=True):
         info["contact_shadow"] = round(k, 3)
 
     region[:] = rgb + (1 - alpha) * region                   # premultiplied "over"
+    if match is not None and match.get("noise", 0) > 0:
+        # same sensor noise as the photo, only where the object is
+        region += rng.standard_normal(region.shape, dtype=np.float32) * (match["noise"] * alpha)
+        info["noise_sigma"] = round(float(match["noise"]), 4)
     return info
 
 

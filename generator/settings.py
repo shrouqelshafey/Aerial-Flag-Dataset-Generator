@@ -155,4 +155,5 @@ def load_settings(path=DEFAULT_CONFIG, seed=None) -> dict:
                   "keep_empty_prob": float(g["keep_empty_tile_prob"])},
         "previews": int(g["preview_frames"]) if cfg.get("previews", {}).get("enabled", True) else 0,
         "layers": dict(layers),
+        "batch": dict(g.get("batch") or {}),          # generate_batch.py (real backgrounds)
     }

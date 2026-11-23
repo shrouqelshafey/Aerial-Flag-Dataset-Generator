@@ -65,6 +65,45 @@ config_used.yaml  summary.json
 Train YOLO with `frames/detect/data.yaml` or `tiles/detect/data.yaml` (or the `obb` ones).
 `dataset/` is not committed; regenerate it with the same seed to get the same images.
 
+### Batch on real backgrounds (Roboflow test set)
+
+`generate_batch.py` pastes flags on REAL drone photos instead of building the ground.
+With 200 photos in `assets/batch_backgrounds/`:
+
+```powershell
+python generate_batch.py --zip
+```
+
+| What | How it is decided (`generator.batch` in config.yaml) |
+| --- | --- |
+| 50 photos stay empty | `negative_fraction: 0.25`, spread evenly over train / valid / test |
+| 150 photos x 3 images | `images_per_background: 3`, each with a random flip / 180 deg turn |
+| 1, 2 or 3 flags per image | `flags_per_image`: exactly 150 / 150 / 150, in random order |
+| Egypt in 60 % of them | `focus_share: 0.60`: exactly 270 of the 450 flag images, chosen at random |
+| No country twice in an image | always; the other countries are balanced (least used goes first) |
+| Split by photo | all images of one photo are in the same split: valid/test = ground never seen |
+
+Total 50 + 150 x 3 = 500 images. The run checks all of this from the written label
+files and stops with an error if anything is off.
+
+Best practices built in:
+- **True size:** the flag gets 2 m / GSD pixels. Put `gsd_m` or `altitude_m` per photo in
+  `assets/batch_backgrounds/index.yaml` when known; otherwise the photo is taken as a full
+  frame of the config camera (HFOV 81 deg) at a random 50-100 m.
+- **Same camera as the photo** (`generator/match.py`): the flag gets the photo's black level
+  (haze), its measured sensor noise and a little lens blur. A flag that is cleaner than the
+  ground around it is a shortcut the model learns instead of the flag.
+- Rendered 4x larger and shrunk (soft, correct edges), random angle 0-360 deg, folds and
+  contact shadow, fully inside the picture, never overlapping.
+
+Output `dataset/batch_<folder>_s42/`: `roboflow_detect/` and `roboflow_obb/` (Roboflow
+layout `train|valid|test/images|labels` + `data.yaml`, `.zip` with `--zip`), `previews/`
+(boxes + 1:1 zoom on each flag), `generation_report.csv` (one row per image), `summary.json`.
+In Roboflow, upload `roboflow_detect` and keep the existing split.
+
+No real photos yet? `python tools/make_demo_backgrounds.py --n 200` builds 200 stand-in frames
+from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/batch_backgrounds_demo`.
+
 ### Assets: what is still needed
 
 - **Flags:** 6 of 28 classes have an image (egypt, united_states = `america.png`, france,
