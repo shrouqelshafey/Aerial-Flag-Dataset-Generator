@@ -110,9 +110,15 @@ from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/b
 
 ### Assets: what is still needed
 
-- **Flags:** 6 of 28 classes have an image (egypt, united_states = `america.png`, france,
-  germany, japan, brazil). The other classes keep their class id and are skipped until
-  `assets/flags/<class name>.png` is added.
+- **Flags:** all 32 classes have an image in `assets/flags/<class name>.png`
+  (united_states = `america.png`). The 26 added later are the public-domain flags from
+  flagcdn.com (1280 px wide). Classes 28-31 (iraq, yemen, syria, syria_old) are the
+  red-white-black tricolours that look like Egypt from the air: the model must learn the
+  emblem, not just the stripes. `syria` is the flag used since March 2025 (green-white-black,
+  three red stars); `syria_old` (red-white-black, two green stars) is built from it by
+  `python tools/flags/make_syria_old.py`. New classes are always added at the END of
+  `countries.class_names`, so the ids of older labels never change. A class whose image is
+  removed keeps its class id and is simply not drawn.
 - **Backgrounds:** the GSD values in `assets/backgrounds/index.yaml` are estimates by eye.
   Several photos cover only 15-30 m of ground, so their texture repeats in a 85-170 m
   frame. Real drone photos at 2-5 cm/px are the next big improvement.

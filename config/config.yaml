@@ -171,10 +171,15 @@ countries:
     - canada
     - australia
     - south_korea
+    # added after the first 28: same red-white-black tricolour family as Egypt
+    - iraq
+    - yemen
+    - syria           # flag since March 2025: green-white-black, three red stars
+    - syria_old       # flag before 2025: red-white-black, two green stars
 
   preserve_class_order: true
 
-  total_classes: 28
+  total_classes: 32
 
   sampling:
     strategy: "balanced"
