@@ -651,8 +651,18 @@ generator:
     random_flip: true               # each image of a photo: random flip / 180 deg turn
     edge_margin_m: 1.0              # flags stay fully inside the picture
     match_camera:                   # give the flag the photo's own camera look (generator/match.py)
-      blur_sigma_px: [0.4, 0.9]     # lens softness
+      blur_sigma_px: [0.4, 1.2]     # lens softness (real flags in the reference photos are soft)
       noise: true                   # same sensor noise as the photo
       haze: true                    # same black level (haze) as the photo
+    look:                           # some images get the look of a reference dataset (generator/look.py)
+      prob: 0.5                     # share of the images that get one
+      strength: [0.7, 1.0]          # 1 = match the reference fully
+      min_contrast: 0.35            # never squash lightness contrast below 35 %
+      min_colour: 0.5               # never squash colour below 50 %
+      presets:                      # Lab mean / spread measured on the reference photos (500 px wide copies)
+        pale_sand:                  # universe.roboflow.com/uavc/flags_gamed_awy (real flags, bright flat sand)
+          {mean_L: [75.5, 78], mean_a: [3, 4.2], mean_b: [8.5, 12], std_L: [1.9, 3.9], std_a: [0.7, 1.0], std_b: [1.2, 3.4]}
+        airfield:                   # universe.roboflow.com/uavc/uav2024-flags (airfield drone photos)
+          {mean_L: [73, 78.5], mean_a: [6, 10], mean_b: [11, 25], std_L: [3.4, 5.0], std_a: [1.0, 1.8], std_b: [2.5, 4.5]}
     jpeg_quality: 95
     preview_images: 12

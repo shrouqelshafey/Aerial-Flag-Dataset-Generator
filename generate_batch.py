@@ -11,7 +11,8 @@ With 200 photos (generator.batch defaults):
 
 Per image: the photo (random flip / 180 deg turn) -> flags rendered at their true size
 for that photo (2 m / GSD) -> placed fully inside the picture at a random angle -> given
-the photo's own blur, noise and haze (generator/match.py) -> labels from the same corners.
+the photo's own blur, noise and haze (generator/match.py) -> for some images, the colour
+and contrast of a reference dataset (generator/look.py) -> labels from the same corners.
 
 Output dataset/<name>/:
     roboflow_detect/{train,valid,test}/{images,labels}  + data.yaml   (YOLO boxes)
@@ -39,6 +40,7 @@ from generator.compose import make_scene, object_corners, place_object
 from generator.flag_render import render_object
 from generator.flags import load_flag_textures
 from generator.labels import detect_line, obb_line, window_labels
+from generator.look import apply_look
 from generator.match import for_image, measure
 from generator.settings import DEFAULT_CONFIG, ROOT, load_settings
 from generator.split import SPLITS
@@ -138,7 +140,7 @@ def do_background(job):
     hfov = s["camera"]["hfov_deg"]
     gsd = bg["gsd_m"] or 2 * bg["altitude_m"] * math.tan(math.radians(hfov) / 2) / W
     photo = src.astype(np.float32) / 255.0
-    look = measure(photo, b["match_camera"])
+    photo_look = measure(photo, b["match_camera"])
     Lm, Sm = s["flag_size_m"]
     ss, fx, cc = s["supersample"], s["flag_effects"], s["compose"]
     margin = b["edge_margin_m"] / gsd
@@ -149,7 +151,7 @@ def do_background(job):
         k = int(rng.integers(4)) if b["random_flip"] else 0
         frame = flip(photo, k).copy()
         scene = make_scene(frame, rng, cc)
-        match = for_image(look, rng, b["match_camera"])
+        match = for_image(photo_look, rng, b["match_camera"])
         taken, flags, no_room = [], [], []
         for c in im["classes"]:
             obj = render_object(G["flags"][c], (Lm, Sm), gsd, ss, rng, fx)
@@ -165,6 +167,9 @@ def do_background(job):
             taken.append((cx, cy, r))
             flags.append({"cls": c, "corners": dst, "angle": angle, "effects": info})
         kept, _ = window_labels(flags, 0, 0, W, H, s["min_visible_fraction"])
+        look = None
+        if b.get("look"):                            # some images get a reference dataset's look
+            frame, look = apply_look(frame, rng, b["look"])
         out = (np.clip(frame, 0, 1) * 255 + 0.5).astype(np.uint8)
         ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, b["jpeg_quality"]])
         if not ok:
@@ -174,7 +179,7 @@ def do_background(job):
         save(run, "obb", bg["split"], stem, first, [obb_line(l, W, H) for l in kept])
         if stem in preview_stems:
             title = (f"{stem} | {bg['split']} | GSD {gsd * 100:.2f} cm/px | 2 m flag = {Lm / gsd:.0f} px"
-                     f" | {bg['path'].name}")
+                     f" | look: {look['look'] if look else 'photo as is'} | {bg['path'].name}")
             cv2.imwrite(str(run / "previews" / f"{stem}.jpg"),
                         preview(out, kept, names, title), [cv2.IMWRITE_JPEG_QUALITY, 90])
         rows.append({
@@ -183,8 +188,11 @@ def do_background(job):
             "scale_from": bg["scale_from"], "flag_long_px": round(Lm / gsd, 1), "flip": k,
             "n_flags": len(kept), "countries": " ".join(names[l["cls"]] for l in kept),
             "no_room": " ".join(no_room), "blur_sigma_px": round(match["blur_sigma"], 3),
-            "noise_sigma": round(look["noise"], 4),
-            "black_level": " ".join(f"{v:.3f}" for v in look["black"]) if look["black"] is not None else "",
+            "noise_sigma": round(photo_look["noise"], 4),
+            "black_level": " ".join(f"{v:.3f}" for v in photo_look["black"])
+            if photo_look["black"] is not None else "",
+            "look": look["look"] if look else "",
+            "look_strength": look["strength"] if look else "",
         })
     return rows
 

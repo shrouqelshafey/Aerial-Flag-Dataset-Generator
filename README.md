@@ -95,6 +95,10 @@ Best practices built in:
   ground around it is a shortcut the model learns instead of the flag.
 - Rendered 4x larger and shrunk (soft, correct edges), random angle 0-360 deg, folds and
   contact shadow, fully inside the picture, never overlapping.
+- **Reference look** (`generator/look.py`, `generator.batch.look`): half of the images get the
+  colour and contrast measured on the Roboflow Universe datasets uavc/flags_gamed_awy (bright,
+  flat, pale sand; pastel flags) and uavc/uav2024-flags (airfield). Gains for white balance, then
+  Lab contrast matching, applied to the whole image so the flags fade the same way.
 
 Output `dataset/batch_<folder>_s42/`: `roboflow_detect/` and `roboflow_obb/` (Roboflow
 layout `train|valid|test/images|labels` + `data.yaml`, `.zip` with `--zip`), `previews/`
