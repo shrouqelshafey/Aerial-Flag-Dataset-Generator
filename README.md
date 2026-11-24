@@ -105,7 +105,23 @@ layout `train|valid|test/images|labels` + `data.yaml`, `.zip` with `--zip`), `pr
 (boxes + 1:1 zoom on each flag), `generation_report.csv` (one row per image), `summary.json`.
 In Roboflow, upload `roboflow_detect` and keep the existing split.
 
-No real photos yet? `python tools/make_demo_backgrounds.py --n 200` builds 200 stand-in frames
+**Real drone maps (default backgrounds).** `assets/background_sources.yaml` lists 5 free
+drone maps from OpenAerialMap (CC-BY 4.0: credit the authors listed there): 4 flat desert
+sites in Iraq (1.7-2.5 cm/px) and a small airstrip in Texas (5 cm/px). The GeoTIFFs are too
+big for git; download them into `assets/batch_backgrounds_sources/` (each entry has its
+`url`), then:
+
+```powershell
+python tools/cut_orthomosaics.py
+```
+
+It cuts 200 camera frames (3840 x 2160, random 50-100 m, exact `gsd_m` in `index.yaml`) into
+`assets/batch_backgrounds/` and 11 large ground textures into `assets/backgrounds/` for
+`generate.py`. Each map is divided into cells bigger than a 100 m frame; a cell is one split
+group, so train / valid / test never share ground. Black map borders are never used. It
+rewrites only its own marked block in each `index.yaml`, so your own photos stay listed.
+
+No maps? `python tools/make_demo_backgrounds.py --n 200` builds 200 stand-in frames
 from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/batch_backgrounds_demo`.
 
 ### Assets: what is still needed
@@ -119,9 +135,13 @@ from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/b
   `python tools/flags/make_syria_old.py`. New classes are always added at the END of
   `countries.class_names`, so the ids of older labels never change. A class whose image is
   removed keeps its class id and is simply not drawn.
-- **Backgrounds:** the GSD values in `assets/backgrounds/index.yaml` are estimates by eye.
-  Several photos cover only 15-30 m of ground, so their texture repeats in a 85-170 m
-  frame. Real drone photos at 2-5 cm/px are the next big improvement.
-  `germany.png` (a flag) and `Western Desert.png` (satellite scale) are excluded.
+- **Backgrounds:** the 11 textures cut from the drone maps have exact GSDs and each covers a
+  whole frame. The 9 older photos in `assets/backgrounds/index.yaml` have GSDs estimated by
+  eye, and several cover only 15-30 m of ground, so their texture repeats in an 85-170 m
+  frame. Ground types are weighted towards the competition site (flat desert sand 45 %,
+  airfield 15 %, vegetation 5 %: `background_distribution` in config.yaml). Still missing:
+  a real desert AIRFIELD (the only airfield map is a small grass-and-concrete strip) and
+  photos of the competition site itself. `germany.png` (a flag) and `Western Desert.png`
+  (satellite scale) are excluded.
 - **Distractors:** the photos have a painted checkerboard instead of transparency; only
   their clean centre is used (`assets/distractors/index.yaml`).

@@ -26,3 +26,17 @@
 # Not used:
 - {file: "Western Desert.png", gsd_m: 0.5, group: western_desert, type: desert_sand, use: false}   # satellite scale (~0.5 m/px): 10x too coarse for 50-100 m
 - {file: "germany.png", gsd_m: 0.05, group: none, type: none, use: false}                         # this is the German flag, not ground
+
+# --- cut_orthomosaics: begin (written by tools/cut_orthomosaics.py, do not edit by hand) ---
+- {file: iraq_gaar_t00.jpg, gsd_m: 0.02224, group: iraq_gaar_c01, type: desert_sand}
+- {file: iraq_gaar_t01.jpg, gsd_m: 0.02224, group: iraq_gaar_c00, type: desert_sand}
+- {file: iraq_qatarat_t00.jpg, gsd_m: 0.02224, group: iraq_qatarat_c00, type: desert_sand}
+- {file: iraq_qatarat_t01.jpg, gsd_m: 0.02224, group: iraq_qatarat_c01, type: desert_sand}
+- {file: iraq_najmi_t00.jpg, gsd_m: 0.02301, group: iraq_najmi_c00, type: compacted_soil}
+- {file: iraq_najmi_t01.jpg, gsd_m: 0.02301, group: iraq_najmi_c03, type: compacted_soil}
+- {file: iraq_najmi_t02.jpg, gsd_m: 0.02301, group: iraq_najmi_c02, type: compacted_soil}
+- {file: iraq_najmi_t03.jpg, gsd_m: 0.02301, group: iraq_najmi_c01, type: compacted_soil}
+- {file: iraq_middar_t00.jpg, gsd_m: 0.02465, group: iraq_middar_c01, type: desert_sand}
+- {file: iraq_middar_t01.jpg, gsd_m: 0.02465, group: iraq_middar_c00, type: desert_sand}
+- {file: davis_airstrip_t00.jpg, gsd_m: 0.05, group: davis_airstrip_c00, type: concrete_airfield}
+# --- cut_orthomosaics: end ---

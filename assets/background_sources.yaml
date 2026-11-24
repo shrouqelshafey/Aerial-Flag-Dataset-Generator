@@ -1,0 +1,51 @@
+# Large drone maps (orthomosaics) that background frames and textures are cut from.
+#
+#   python tools/cut_orthomosaics.py            (see that file for what it writes)
+#
+# The GeoTIFFs themselves are big (4-90 MB each) and are NOT in git: they live in
+# assets/batch_backgrounds_sources/ (gitignored). `url` downloads the same file again.
+#
+#   file      GeoTIFF name in assets/batch_backgrounds_sources/
+#   name      short name: becomes the file prefix and the split group of every cut
+#   gsd_m     metres per pixel of the GeoTIFF (from the OpenAerialMap metadata)
+#   type      one of synthesis.environment.background_types (config/config.yaml)
+#   credit    LICENCE: all are CC-BY 4.0 = free to use, also in public datasets, but the
+#             author must be credited. Keep this file next to any dataset made from them.
+#
+# Source: OpenAerialMap (openaerialmap.org), searched 2026-11-24 for CC-BY drone maps
+# sharper than 6 cm/px over flat desert and airfields.
+
+- file: iraq_tell_al_gaar.tif
+  name: iraq_gaar
+  gsd_m: 0.01665
+  type: desert_sand
+  credit: "Tell AL-Ga'ar, Iraq (2021-10-04), by A. A., OpenAerialMap, CC-BY 4.0"
+  url: https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/6966c0031415ad494774b07e/0/6966c0031415ad494774b07f.tif
+
+- file: iraq_tell_al_qatarat.tif
+  name: iraq_qatarat
+  gsd_m: 0.01710
+  type: desert_sand
+  credit: "Tell AL-Qatarat, Iraq (2021-08-02), by A. A., OpenAerialMap, CC-BY 4.0"
+  url: https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/695e214a9ecfe466a0024b63/0/695e214a9ecfe466a0024b64.tif
+
+- file: iraq_tell_al_najmi.tif
+  name: iraq_najmi
+  gsd_m: 0.02301
+  type: compacted_soil
+  credit: "Tell AL-Najmi 2021, Iraq (2021-05-11), by Ahmed, OpenAerialMap, CC-BY 4.0"
+  url: https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/69498029df5aa227820d3bb5/0/69498029df5aa227820d3bb6.tif
+
+- file: iraq_tell_al_middar.tif
+  name: iraq_middar
+  gsd_m: 0.02465
+  type: desert_sand
+  credit: "Tell AL-Middar, Iraq (2022-07-04), by A. A., OpenAerialMap, CC-BY 4.0"
+  url: https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/695c4bce3bc155188941f068/0/695c4bce3bc155188941f069.tif
+
+- file: texas_davis_field_airstrip.tif
+  name: davis_airstrip
+  gsd_m: 0.05
+  type: concrete_airfield
+  credit: "Davis Field Model Airport, Texas, USA (2024-01-25), by WebODM, OpenAerialMap, CC-BY 4.0"
+  url: https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/65b33c1071b11e0001cea97b/0/65b33c1071b11e0001cea97c.tif

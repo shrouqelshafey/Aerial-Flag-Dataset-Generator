@@ -225,3 +225,8 @@ __marimo__/
 # Generated datasets (regenerate with generate.py)
 dataset/
 assets/batch_backgrounds_demo/
+# Drone maps (big GeoTIFFs; urls in assets/background_sources.yaml) and what
+# tools/cut_orthomosaics.py cuts from them (re-run it to get the same files)
+assets/batch_backgrounds_sources/
+assets/batch_backgrounds/*.jpg
+assets/backgrounds/*_t[0-9][0-9].jpg

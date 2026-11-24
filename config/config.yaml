@@ -257,13 +257,13 @@ synthesis:
       - sparse_desert_vegetation
       - concrete_airfield
 
-    background_distribution:
-      desert_sand: 0.40
-      compacted_soil: 0.20
-      dry_gravel: 0.15
+    background_distribution:      # competition site: flat desert airfield
+      desert_sand: 0.45
+      compacted_soil: 0.15
+      dry_gravel: 0.10
       sandy_ground: 0.10
-      sparse_desert_vegetation: 0.10
-      concrete_airfield: 0.05
+      sparse_desert_vegetation: 0.05
+      concrete_airfield: 0.15
 
     terrain:
       randomize: true
