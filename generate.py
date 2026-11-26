@@ -6,7 +6,7 @@
 
 One image = one simulated SIYI A8 mini frame (3840 x 2160) from 50-100 m. Per frame:
   1 scene (altitude -> GSD) -> 2 background at that GSD -> 3 flag rendered at true size
-  -> 4 placement -> 5 blending -> 6 distractors -> 7 camera effects -> 8 labels
+  -> 4 placement -> 5 blending -> 6 distractors -> 7 camera tilt + effects -> 8 labels
   -> 9 tiles -> 10 split + save
 Output: dataset/<run>/  (see generator/writer.py for the folder layout)
 """
@@ -35,6 +35,7 @@ from generator.scale import camera_from_settings
 from generator.settings import DEFAULT_CONFIG, load_settings
 from generator.split import SPLITS, assign_groups, pick_split
 from generator.tiling import tile_origins
+from generator.view import describe, sample_view, warp_frame, warp_points
 from generator.writer import DatasetWriter
 
 G = {}   # per-process state (each worker process loads its own copy)
@@ -54,7 +55,7 @@ def init_worker(s, run_dir, variants):
     G["drawable"] = sorted(G["flags"])        # class ids that have a flag image
     G["distractor_images"] = load_distractor_images(s["distractors"]["dir"]) \
         if s["distractors"]["enabled"] else []
-    G["split_groups"] = assign_groups(G["bg"].groups(), s["split"], s["seed"])
+    G["split_groups"] = assign_groups(G["bg"].groups(), s["split"], s["seed"], G["bg"].fixed_splits())
     G["writer"] = DatasetWriter(run_dir, s["classes"], s["jpeg_quality"], variants)
 
 
@@ -64,18 +65,19 @@ def sample_count(rng, dist):
     return ks[int(rng.choice(len(ks), p=p / p.sum()))]
 
 
-def find_spot(rng, w, h, long_px, short_px, taken, spacing_px, allow_partial):
-    """Pick a centre that keeps every object `spacing_px` away from the others."""
+def find_spot(rng, quad, long_px, short_px, taken, spacing_px, allow_partial):
+    """Pick a centre inside `quad` (the part of the canvas the camera sees) that keeps
+    every object `spacing_px` away from the others. Sometimes (allow_partial) the
+    object is put across the picture edge instead."""
     r = 0.5 * float(np.hypot(long_px, short_px))
-    for _ in range(60):
-        if rng.random() < allow_partial:          # straddle a random border
-            side = int(rng.integers(4))
-            off = rng.uniform(-0.6 * r, 0.6 * r)
-            cx, cy = [(off, rng.uniform(0, h)), (w - off, rng.uniform(0, h)),
-                      (rng.uniform(0, w), off), (rng.uniform(0, w), h - off)][side]
-        else:
-            cx = rng.uniform(r + 1, max(r + 2, w - r - 1))
-            cy = rng.uniform(r + 1, max(r + 2, h - r - 1))
+    poly = np.asarray(quad, np.float32).reshape(-1, 1, 2)
+    (x0, y0), (x1, y1) = quad.min(axis=0), quad.max(axis=0)
+    partial = rng.random() < allow_partial          # straddle the picture edge
+    for _ in range(200):
+        cx, cy = rng.uniform(x0, x1), rng.uniform(y0, y1)
+        d = cv2.pointPolygonTest(poly, (float(cx), float(cy)), True)   # > 0 inside, in px
+        if (abs(d) > 0.6 * r) if partial else (d < r + 1):
+            continue
         if all(np.hypot(cx - tx, cy - ty) > r + tr + spacing_px for tx, ty, tr in taken):
             return cx, cy, r
     return None
@@ -112,8 +114,15 @@ def generate_one(idx):
     altitude = uniform(rng, s["altitude_m"])
     gsd = cam.gsd(altitude)
 
+    # camera direction: straight down, or tilted a little (generator.view). Tilted, the
+    # ground the camera sees is bigger than one frame: it is built straight down on a
+    # larger canvas and turned into the tilted picture in step 7.
+    view = sample_view(rng, s["view"], W, H, cam.f_px)
+    Wc, Hc = view["size"]
+    quad = view["quad"]
+
     # 2. background at the frame's GSD
-    frame, bg_info = G["bg"].sample(rng, G["split_groups"][split], gsd, W, H, s["backgrounds"]["jitter"])
+    frame, bg_info = G["bg"].sample(rng, G["split_groups"][split], gsd, Wc, Hc, s["backgrounds"]["jitter"])
     scene = make_scene(frame, rng, cc)
 
     # 3-5. flags: render at true size -> place -> blend
@@ -126,7 +135,7 @@ def generate_one(idx):
     for c in cls_ids:
         obj = render_object(G["flags"][int(c)], (Lm, Sm), gsd, ss, rng, fx)
         Lp, Sp = obj.long_px / ss, obj.short_px / ss
-        spot = find_spot(rng, W, H, Lp, Sp, taken, spacing, s["allow_partial_prob"])
+        spot = find_spot(rng, quad, Lp, Sp, taken, spacing, s["allow_partial_prob"])
         if spot is None:
             no_room.append(int(c))
             continue
@@ -148,7 +157,7 @@ def generate_one(idx):
             tex, size_m, rigid, dname = make_distractor(kind, rng, G["distractor_images"])
             obj = render_object(tex, size_m, gsd, ss, rng, rigid_fx if rigid else fx)
             Lp, Sp = obj.long_px / ss, obj.short_px / ss
-            spot = find_spot(rng, W, H, Lp, Sp, taken, spacing, s["allow_partial_prob"])
+            spot = find_spot(rng, quad, Lp, Sp, taken, spacing, s["allow_partial_prob"])
             if spot is None:
                 continue
             cx, cy, r = spot
@@ -160,7 +169,13 @@ def generate_one(idx):
 
     shadows = cast_shadows(frame, gsd, rng, cc)
 
-    # 7. camera effects
+    # 7. camera: the tilt (pixels and flag corners through the same homography), then
+    #    the camera effects on the final picture
+    frame = warp_frame(frame, view, W, H)
+    for f in flags:
+        f["corners"] = warp_points(f["corners"], view)
+    for d in distractors:
+        d["center_px"] = np.round(warp_points([d["center_px"]], view)[0], 1).tolist()
     img, cam_params = apply_camera(frame, gsd, rng, s["camera_sim"])
 
     # 8. labels for the full frame
@@ -188,7 +203,7 @@ def generate_one(idx):
                        "hfov_deg": cam.hfov_deg, "f_px": round(cam.f_px, 2)},
             "altitude_m": round(altitude, 2), "gsd_m": round(gsd, 5),
             "flag_long_px": round(Lm / gsd, 2), "flag_short_px": round(Sm / gsd, 2),
-            "background": bg_info,
+            "background": bg_info, "view": describe(view),
             "scene": {"tint": [round(float(v), 3) for v in scene.tint], "light": round(scene.light, 3)},
             "flags": [{**{k: v for k, v in f.items() if k != "corners"},
                        "corners_px": np.round(f["corners"], 2).tolist()} for f in flags],

@@ -28,15 +28,18 @@
 - {file: "germany.png", gsd_m: 0.05, group: none, type: none, use: false}                         # this is the German flag, not ground
 
 # --- cut_orthomosaics: begin (written by tools/cut_orthomosaics.py, do not edit by hand) ---
-- {file: iraq_gaar_t00.jpg, gsd_m: 0.02224, group: iraq_gaar_c01, type: desert_sand}
-- {file: iraq_gaar_t01.jpg, gsd_m: 0.02224, group: iraq_gaar_c00, type: desert_sand}
-- {file: iraq_qatarat_t00.jpg, gsd_m: 0.02224, group: iraq_qatarat_c00, type: desert_sand}
-- {file: iraq_qatarat_t01.jpg, gsd_m: 0.02224, group: iraq_qatarat_c01, type: desert_sand}
-- {file: iraq_najmi_t00.jpg, gsd_m: 0.02301, group: iraq_najmi_c00, type: compacted_soil}
-- {file: iraq_najmi_t01.jpg, gsd_m: 0.02301, group: iraq_najmi_c03, type: compacted_soil}
-- {file: iraq_najmi_t02.jpg, gsd_m: 0.02301, group: iraq_najmi_c02, type: compacted_soil}
-- {file: iraq_najmi_t03.jpg, gsd_m: 0.02301, group: iraq_najmi_c01, type: compacted_soil}
-- {file: iraq_middar_t00.jpg, gsd_m: 0.02465, group: iraq_middar_c01, type: desert_sand}
-- {file: iraq_middar_t01.jpg, gsd_m: 0.02465, group: iraq_middar_c00, type: desert_sand}
-- {file: davis_airstrip_t00.jpg, gsd_m: 0.05, group: davis_airstrip_c00, type: concrete_airfield}
+- {file: iraq_gaar_t00.jpg, gsd_m: 0.02224, group: iraq_gaar_c00, type: desert_sand, split: val}
+- {file: iraq_gaar_t01.jpg, gsd_m: 0.02224, group: iraq_gaar_c01, type: desert_sand, split: train}
+- {file: iraq_gaar_t02.jpg, gsd_m: 0.02224, group: iraq_gaar_r00, type: desert_sand, split: train}
+- {file: iraq_qatarat_t00.jpg, gsd_m: 0.02224, group: iraq_qatarat_c00, type: desert_sand, split: train}
+- {file: iraq_qatarat_t01.jpg, gsd_m: 0.02224, group: iraq_qatarat_c01, type: desert_sand, split: train}
+- {file: iraq_qatarat_t02.jpg, gsd_m: 0.02224, group: iraq_qatarat_r00, type: desert_sand, split: train}
+- {file: iraq_najmi_t00.jpg, gsd_m: 0.02301, group: iraq_najmi_c00, type: compacted_soil, split: train}
+- {file: iraq_najmi_t01.jpg, gsd_m: 0.02301, group: iraq_najmi_c01, type: compacted_soil, split: train}
+- {file: iraq_najmi_t02.jpg, gsd_m: 0.02301, group: iraq_najmi_c02, type: compacted_soil, split: train}
+- {file: iraq_najmi_t03.jpg, gsd_m: 0.02301, group: iraq_najmi_c03, type: compacted_soil, split: train}
+- {file: iraq_middar_t00.jpg, gsd_m: 0.02465, group: iraq_middar_c00, type: desert_sand, split: test}
+- {file: iraq_middar_t01.jpg, gsd_m: 0.02465, group: iraq_middar_c01, type: desert_sand, split: val}
+- {file: iraq_middar_t02.jpg, gsd_m: 0.02465, group: iraq_middar_r00, type: desert_sand, split: train}
+- {file: davis_airstrip_t00.jpg, gsd_m: 0.05, group: davis_airstrip_c00, type: concrete_airfield, split: train}
 # --- cut_orthomosaics: end ---

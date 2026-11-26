@@ -12,12 +12,15 @@ Reads assets/background_sources.yaml and the GeoTIFFs in assets/batch_background
    coarser than the frame GSD is never enlarged more than --max-upsample: the altitude
    range of that map starts higher instead.
 2. TEXTURES for generate.py      ->  assets/backgrounds/<name>_tNN.jpg (+ entries in its index.yaml)
-   Square pieces at the sharpest GSD the generator needs (the 50 m frame), so the
+   The biggest clean square in every cell, plus the biggest clean rectangles in the
+   ground outside the cells that still cover a --strip-altitude frame (group <name>_rNN,
+   always train). Stored at the sharpest GSD the generator needs (the 50 m frame), so the
    generator only ever shrinks them.
 
 No ground in two splits: each map is divided into square CELLS a bit larger than the
 biggest footprint (a 100 m frame). Every cut lies inside one cell, and the cell is the
-split group (<name>_cNN), so train / valid / test never share ground.
+split group (<name>_cNN), so train / valid / test never share ground. The cell's split
+is written into both index files (`split:`), so it is the same in both generators.
 Black or transparent map borders are never used.
 
 Re-running replaces only what this tool wrote (the marked block in each index.yaml);
@@ -35,6 +38,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from generator.settings import DEFAULT_CONFIG, load_settings  # noqa: E402
+from generator.split import assign_groups  # noqa: E402
 
 MADE_BY = "cut_orthomosaics"
 BLOCK = 16          # validity is checked on 16 x 16 px blocks of the map
@@ -123,6 +127,41 @@ def cells_of(valid_blocks, cell_px, min_valid=0.6):
     return best[2]
 
 
+def biggest_square(good, cell):
+    """Biggest square of clean blocks inside a cell -> (x, y, side) in map pixels."""
+    cx, cy, cs = cell
+    bx0, by0, cb = cx // BLOCK, cy // BLOCK, cs // BLOCK
+    sub = good[by0:by0 + cb, bx0:bx0 + cb]
+    dp = np.zeros((sub.shape[0] + 1, sub.shape[1] + 1), np.int32)   # side of the square ending here
+    for i in range(sub.shape[0]):
+        row, up = dp[i + 1], dp[i]
+        for j in np.flatnonzero(sub[i]):
+            row[j + 1] = 1 + min(up[j + 1], row[j], up[j])
+    i, j = np.unravel_index(int(dp.argmax()), dp.shape)
+    n = int(dp[i, j])
+    return (bx0 + j - n) * BLOCK, (by0 + i - n) * BLOCK, n * BLOCK
+
+
+def biggest_rect(mask):
+    """Biggest all-True rectangle of a block mask -> (x, y, w, h) in blocks."""
+    h, w = mask.shape
+    heights = np.zeros(w, np.int64)
+    best = (0, 0, 0, 0, 0)
+    for y in range(h):
+        heights = np.where(mask[y], heights + 1, 0)
+        stack = []                                  # (start x, height), heights increasing
+        for x in range(w + 1):
+            cur = int(heights[x]) if x < w else 0
+            start = x
+            while stack and stack[-1][1] >= cur:
+                sx, sh = stack.pop()
+                if sh * (x - sx) > best[0]:
+                    best = (sh * (x - sx), sx, y - sh + 1, x - sx, sh)
+                start = sx
+            stack.append((start, cur))
+    return best[1:]
+
+
 BEGIN = f"# --- {MADE_BY}: begin (written by tools/cut_orthomosaics.py, do not edit by hand) ---"
 END = f"# --- {MADE_BY}: end ---"
 
@@ -162,9 +201,11 @@ def main():
     ap.add_argument("--maps-dir", default=str(ROOT / "assets" / "batch_backgrounds_sources"))
     ap.add_argument("--frames", type=int, default=200, help="frames in total, spread over all cells")
     ap.add_argument("--frames-dir", default=str(ROOT / "assets" / "batch_backgrounds"))
-    ap.add_argument("--textures-per-map", type=int, default=4)
+    ap.add_argument("--textures-per-map", type=int, default=0, help="cells per map that get a "
+                    "texture (0 = all)")
     ap.add_argument("--textures-dir", default=str(ROOT / "assets" / "backgrounds"))
-    ap.add_argument("--texture-side-px", type=int, default=6000)
+    ap.add_argument("--strip-altitude", type=float, default=75.0, help="ground outside the cells "
+                    "becomes a texture if a clean rectangle there covers a frame from this altitude")
     ap.add_argument("--max-upsample", type=float, default=1.5)
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
@@ -203,7 +244,7 @@ def main():
         if not cells or alt_min > alt_hi:
             print("    skipped: too small or too coarse")
             continue
-        maps.append(dict(src=src, img=img, gsd=g, integral=bad_int, cells=cells, alt_min=alt_min))
+        maps.append(dict(src=src, img=img, gsd=g, good=good, integral=bad_int, cells=cells, alt_min=alt_min))
 
     # pass 2: frames, spread evenly over all cells of all maps
     all_cells = [(m, k) for m in maps for k in range(len(m["cells"]))]
@@ -238,30 +279,53 @@ def main():
                             "group": f"{name}_c{k:02d}", "type": m["src"]["type"]})
             n_frames += 1
 
-    # pass 3: textures for generate.py, one per cell (cells chosen at random)
-    n_tex = 0
+    # one split for every piece of map ground, written into BOTH index files, so a cell
+    # is in the same split in generate.py and generate_batch.py (the batch's valid/test
+    # ground is never in generate.py's train). Same draw as generate_batch.py used before.
+    cell_groups = sorted(f"{m['src']['name']}_c{k:02d}" for m in maps for k in range(len(m["cells"])))
+    g2s = {g: sp for sp, gs in assign_groups(cell_groups, s["split"], s["seed"]).items() for g in gs}
+    for e in f_index:
+        e["split"] = g2s[e["group"]]
+
+    # pass 3: textures for generate.py: the biggest clean square in EVERY cell (a full
+    # cell is ~176 m: covers a 100 m frame without patching), at the sharpest GSD the
+    # generator needs (the 50 m frame), so it only ever shrinks them
+    n_tex, tex_area = 0, 0.0
     for m in maps:
         name, g = m["src"]["name"], m["gsd"]
-        tg = max(g, gsd_at(alt_lo))                              # sharpest GSD the generator needs
-        side_src = round(a.texture_side_px * tg / g)
-        for i, k in enumerate(rng.permutation(len(m["cells"]))[:a.textures_per_map]):
-            side = min(side_src, m["cells"][k][2])
-            while side >= side_src // 2:                         # smaller square if the full one does not fit
-                pos = find_window(m["integral"], m["cells"][k], side, side, rng)
-                if pos is not None:
-                    break
-                side = int(side * 0.9)
-            if pos is None:
-                continue
-            x, y = pos
-            crop = m["img"][y:y + side, x:x + side]
-            out_side = round(side * g / tg)
-            tex = cv2.resize(crop, (out_side, out_side), interpolation=cv2.INTER_AREA) if out_side != side else crop
+        tg = max(g, gsd_at(alt_lo))
+        cells = range(len(m["cells"]))
+        if a.textures_per_map:
+            cells = sorted(rng.permutation(len(m["cells"]))[:a.textures_per_map])
+        pieces = []
+        for k in cells:
+            x, y, side = biggest_square(m["good"], m["cells"][k])
+            if side * g >= cell_m / 2:
+                pieces.append((x, y, side, side, f"{name}_c{k:02d}", g2s[f"{name}_c{k:02d}"]))
+        # pass 4: ground outside the cells: the biggest clean rectangles that still cover
+        # a 75 m frame (long strips along the map edges). Their own group, always train.
+        rest = m["good"].copy()
+        for x, y, cs in m["cells"]:
+            rest[y // BLOCK:-(-(y + cs) // BLOCK), x // BLOCK:-(-(x + cs) // BLOCK)] = False
+        min_long = W * gsd_at(a.strip_altitude) / g / BLOCK
+        min_short = H * gsd_at(a.strip_altitude) / g / BLOCK
+        for j in range(20):
+            bx, by, bw, bh = biggest_rect(rest)
+            if max(bw, bh) < min_long or min(bw, bh) < min_short:
+                break
+            rest[by:by + bh, bx:bx + bw] = False
+            pieces.append((bx * BLOCK, by * BLOCK, bw * BLOCK, bh * BLOCK, f"{name}_r{j:02d}", "train"))
+        for i, (x, y, w, h, group, split) in enumerate(pieces):
+            crop = m["img"][y:y + h, x:x + w]
+            out = (round(w * g / tg), round(h * g / tg))
+            tex = cv2.resize(crop, out, interpolation=cv2.INTER_AREA) if out != (w, h) else crop
             fname = f"{name}_t{i:02d}.jpg"
             cv2.imwrite(str(tex_dir / fname), tex, [cv2.IMWRITE_JPEG_QUALITY, 95])
-            t_index.append({"file": fname, "gsd_m": round(tg, 5), "group": f"{name}_c{k:02d}",
-                            "type": m["src"]["type"]})
+            t_index.append({"file": fname, "gsd_m": round(tg, 5), "group": group,
+                            "type": m["src"]["type"], "split": split})
             n_tex += 1
+            tex_area += w * h * g * g
+            print(f"    texture {fname}: {w * g:.0f} x {h * g:.0f} m, {group}, {split}")
 
     f_header = ("# Background frames for generate_batch.py (see generator/batch.py).\n"
                 "# Add your own photos OUTSIDE the cut_orthomosaics block, as\n"
@@ -269,7 +333,10 @@ def main():
                 "# Credits / licences of the drone maps: assets/background_sources.yaml\n")
     write_index(frames_dir / "index.yaml", *f_parts, f_index, f_header)
     write_index(tex_dir / "index.yaml", *t_parts, t_index)
-    print(f"Wrote {n_frames} frames to {frames_dir} and {n_tex} textures to {tex_dir}")
+    print(f"Wrote {n_frames} frames to {frames_dir} and {n_tex} textures "
+          f"({tex_area / 1e4:.1f} ha of ground) to {tex_dir}")
+    print("Splits of the map cells: " + ", ".join(
+        f"{sp}: {' '.join(gs)}" for sp, gs in assign_groups(cell_groups, s["split"], s["seed"]).items()))
 
 
 if __name__ == "__main__":

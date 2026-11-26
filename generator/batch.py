@@ -67,7 +67,7 @@ def load_backgrounds(bg_dir, altitude_range, seed):
         if not e.get("use", True):
             continue
         alt = rng.uniform(*altitude_range)        # drawn for every file: stable if index changes
-        b = Background(p, str(e.get("group", p.stem)))
+        b = Background(p, str(e.get("group", p.stem)), split=str(e.get("split", "")))
         if e.get("gsd_m"):
             b.gsd_m, b.info["scale_from"] = float(e["gsd_m"]), "index gsd_m"
         elif e.get("altitude_m"):
@@ -99,8 +99,9 @@ def plan(backgrounds, b, split_ratios, drawable, focus_id, seed):
 
     # 1. split by group (one place never in two splits)
     groups = sorted({bg.group for bg in backgrounds})
+    fixed = {bg.group: bg.split for bg in backgrounds if bg.split}     # `split:` in index.yaml
     g2s = {}
-    for sp, gs in assign_groups(groups, split_ratios, seed).items():
+    for sp, gs in assign_groups(groups, split_ratios, seed, fixed).items():
         for g in gs:
             g2s.setdefault(g, sp)                 # < 3 groups: everything goes to train
     for bg in backgrounds:

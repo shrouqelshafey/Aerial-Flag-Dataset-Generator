@@ -25,6 +25,7 @@ from .noise import smooth_noise, uniform
 
 IMG_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
 COVER_STRETCH_MAX = 1.15
+CACHE_BYTES = 450 * 2 ** 20      # decoded photos kept per worker (a 7900 px texture = 180 MB)
 
 
 class BackgroundLibrary:
@@ -49,9 +50,12 @@ class BackgroundLibrary:
             if not e.get("use", True):
                 self.skipped.append(p.name)
                 continue
+            w, h = image_size(p)
             self.items.append({"path": p, "file": p.name, "gsd_m": float(e["gsd_m"]),
                                "group": str(e.get("group", p.stem)),
-                               "type": str(e.get("type", "unknown"))})
+                               "type": str(e.get("type", "unknown")),
+                               "split": str(e.get("split", "")),
+                               "area_m2": w * h * float(e["gsd_m"]) ** 2})
         if not self.items:
             raise FileNotFoundError(f"No usable background in {self.dir} (check index.yaml).")
         self._cache = {}
@@ -59,13 +63,19 @@ class BackgroundLibrary:
     def groups(self):
         return sorted({it["group"] for it in self.items})
 
+    def fixed_splits(self):
+        """{group: split} for groups whose index.yaml entry names a split (drone-map cells)."""
+        return {it["group"]: it["split"] for it in self.items if it["split"]}
+
     def _load(self, path: Path) -> np.ndarray:
         if path not in self._cache:
-            if len(self._cache) > 6:               # keep memory bounded
-                self._cache.pop(next(iter(self._cache)))
             img = cv2.imread(str(path), cv2.IMREAD_COLOR)
             if img is None:
                 raise IOError(f"Cannot read {path}")
+            # keep memory bounded (each worker process has its own cache): drop the
+            # oldest photos until this one fits in CACHE_BYTES
+            while self._cache and sum(v.nbytes for v in self._cache.values()) + img.nbytes > CACHE_BYTES:
+                self._cache.pop(next(iter(self._cache)))
             self._cache[path] = img
         return self._cache[path]
 
@@ -73,11 +83,14 @@ class BackgroundLibrary:
         pool = [it for it in self.items if it["group"] in groups]
         sharp = [it for it in pool if target_gsd * self.max_upsample >= it["gsd_m"]]
         cands = sharp or sorted(pool, key=lambda it: it["gsd_m"])[:1]
-        # Weight by background_distribution: P(type) shared equally by the files of that type.
-        counts = {}
+        # Weight by background_distribution: P(type), shared by the files of that type in
+        # proportion to the ground they cover - a 3 ha drone-map texture is used far more
+        # often than a 20 m photo, so every square metre of ground repeats about equally.
+        area = {}
         for it in cands:
-            counts[it["type"]] = counts.get(it["type"], 0) + 1
-        w = np.array([self.type_dist.get(it["type"], 0.0) / counts[it["type"]] for it in cands])
+            area[it["type"]] = area.get(it["type"], 0.0) + it["area_m2"]
+        w = np.array([self.type_dist.get(it["type"], 0.0) * it["area_m2"] / area[it["type"]]
+                      for it in cands])
         if w.sum() <= 0:
             w = np.ones(len(cands))
         return cands[int(rng.choice(len(cands), p=w / w.sum()))]
@@ -88,27 +101,44 @@ class BackgroundLibrary:
         src = self._load(it["path"])
 
         scale = target_gsd / it["gsd_m"]           # source pixels per output pixel
-        rot90 = int(rng.integers(4))
         sh, sw = src.shape[:2]
-        rw, rh = (sh, sw) if rot90 % 2 else (sw, sh)            # size after the turn
+
+        def cover_of(turned):                      # >= 1: the photo is too small that way round
+            rw, rh = (sh, sw) if turned else (sw, sh)
+            return max(out_w / (rw / scale), out_h / (rh / scale))
+
+        # Turn the photo so that it covers the frame when it can (a long strip of ground
+        # covers a frame lengthwise only); among the turns that do, pick at random.
+        ok = [k for k in range(4) if cover_of(k % 2) <= COVER_STRETCH_MAX]
+        rot90 = int(rng.choice(ok)) if ok else int(rng.integers(4))
         # Almost big enough (within 15 %)? Enlarge a little to cover the frame: one
         # clean photo beats a few huge patches with visible seams. The error is far
         # smaller than the uncertainty of the gsd_m estimates; it is recorded.
-        cover = max(out_w / (rw / scale), out_h / (rh / scale))
+        cover = cover_of(rot90 % 2)
         stretch = cover if 1.0 < cover <= COVER_STRETCH_MAX else 1.0
         scale /= stretch
-        sw = max(1, int(np.ceil(sw / scale - 1e-6)))
-        sh = max(1, int(np.ceil(sh / scale - 1e-6)))
         interp = cv2.INTER_AREA if scale > 1 else cv2.INTER_CUBIC
-        img = cv2.resize(src, (sw, sh), interpolation=interp)   # now at the frame's GSD
-        img = np.rot90(img, rot90)
-        if rng.random() < 0.5:
-            img = img[:, ::-1]
-        if img.shape[1] >= out_w and img.shape[0] >= out_h:
-            x0 = int(rng.integers(0, img.shape[1] - out_w + 1))
-            y0 = int(rng.integers(0, img.shape[0] - out_h + 1))
-            img, patches = img[y0:y0 + out_h, x0:x0 + out_w], 0
+        flip = rng.random() < 0.5
+        if cover <= COVER_STRETCH_MAX:
+            # Crop first, then resize only that piece (a big texture is 60+ MP: resizing
+            # all of it for every frame is slow). Same result as resize-then-crop.
+            tw, th = (out_h, out_w) if rot90 % 2 else (out_w, out_h)   # crop size before the turn
+            cw, ch = min(sw, tw * scale), min(sh, th * scale)
+            x0, y0 = rng.uniform(0, sw - cw), rng.uniform(0, sh - ch)
+            xi, yi = int(x0), int(y0)
+            xe, ye = min(sw, int(np.ceil(x0 + cw))), min(sh, int(np.ceil(y0 + ch)))
+            img = cv2.resize(src[yi:ye, xi:xe], (tw, th), interpolation=interp)
+            img = np.rot90(img, rot90)
+            if flip:
+                img = img[:, ::-1]
+            patches = 0
         else:
+            sw = max(1, int(np.ceil(sw / scale - 1e-6)))
+            sh = max(1, int(np.ceil(sh / scale - 1e-6)))
+            img = cv2.resize(src, (sw, sh), interpolation=interp)   # now at the frame's GSD
+            img = np.rot90(img, rot90)
+            if flip:
+                img = img[:, ::-1]
             img, patches = _patch_fill(img, out_w, out_h, rng)
         img = np.ascontiguousarray(img).astype(np.float32) / 255.0
 
@@ -122,6 +152,31 @@ class BackgroundLibrary:
                 "upsampled": scale < 1, "cover_stretch": round(stretch, 3),
                 "fill_patches": patches, "rot90": rot90, "markings": marked}
         return img, info
+
+
+def image_size(path: Path):
+    """(width, height) from the PNG / JPEG header, without decoding the picture."""
+    with open(path, "rb") as f:
+        head = f.read(26)
+        if head[:8] == b"\x89PNG\r\n\x1a\n":
+            return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        if head[:2] == b"\xff\xd8":
+            f.seek(2)
+            while True:
+                marker = f.read(2)
+                if len(marker) < 2 or marker[0] != 0xFF:
+                    break
+                if marker[1] in (0xD8, 0x01) or 0xD0 <= marker[1] <= 0xD7:
+                    continue
+                n = int.from_bytes(f.read(2), "big")
+                if 0xC0 <= marker[1] <= 0xCF and marker[1] not in (0xC4, 0xC8, 0xCC):   # start of frame
+                    d = f.read(5)
+                    return int.from_bytes(d[3:5], "big"), int.from_bytes(d[1:3], "big")
+                f.seek(n - 2, 1)
+    img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)       # other formats: decode once
+    if img is None:
+        raise IOError(f"Cannot read {path}")
+    return img.shape[1], img.shape[0]
 
 
 def _feather_mask(p, feather):

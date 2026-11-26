@@ -11,8 +11,9 @@ With 200 photos (generator.batch defaults):
 
 Per image: the photo (random flip / 180 deg turn) -> flags rendered at their true size
 for that photo (2 m / GSD) -> placed fully inside the picture at a random angle -> given
-the photo's own blur, noise and haze (generator/match.py) -> for some images, the colour
-and contrast of a reference dataset (generator/look.py) -> labels from the same corners.
+the photo's own blur, noise and haze (generator/match.py) -> camera tilt (generator/view.py)
+and extra blur on the whole picture -> for some images, the colour and contrast of a
+reference dataset (generator/look.py) -> labels from the same corners.
 
 Output dataset/<name>/:
     roboflow_detect/{train,valid,test}/{images,labels}  + data.yaml   (YOLO boxes)
@@ -36,6 +37,7 @@ import numpy as np
 import yaml
 
 from generator.batch import load_backgrounds, plan
+from generator.camera import apply_blur
 from generator.compose import make_scene, object_corners, place_object
 from generator.flag_render import render_object
 from generator.flags import load_flag_textures
@@ -44,6 +46,7 @@ from generator.look import apply_look
 from generator.match import for_image, measure
 from generator.settings import DEFAULT_CONFIG, ROOT, load_settings
 from generator.split import SPLITS
+from generator.view import is_tilted, sample_view, warp_frame, warp_points
 
 FOLDER = {"train": "train", "val": "valid", "test": "test"}     # Roboflow's names
 FORMATS = ("detect", "obb")
@@ -59,15 +62,18 @@ def init_worker(s, run_dir):
 
 
 # ---------------------------------------------------------------------------
-def find_spot(rng, w, h, long_px, short_px, margin_px, taken, spacing_px):
-    """A centre that keeps the whole flag inside the picture and away from the others."""
+def find_spot(rng, quad, long_px, short_px, margin_px, taken, spacing_px):
+    """A centre that keeps the whole flag inside `quad` (the part of the photo that ends
+    up in the picture) with `margin_px` to spare, and away from the other flags."""
     r = 0.5 * float(np.hypot(long_px, short_px))
-    lo_x, hi_x = r + margin_px, w - r - margin_px
-    lo_y, hi_y = r + margin_px, h - r - margin_px
-    if hi_x <= lo_x or hi_y <= lo_y:
+    poly = np.asarray(quad, np.float32).reshape(-1, 1, 2)
+    (x0, y0), (x1, y1) = quad.min(axis=0) + r + margin_px, quad.max(axis=0) - r - margin_px
+    if x1 <= x0 or y1 <= y0:
         return None
     for _ in range(200):
-        cx, cy = rng.uniform(lo_x, hi_x), rng.uniform(lo_y, hi_y)
+        cx, cy = rng.uniform(x0, x1), rng.uniform(y0, y1)
+        if cv2.pointPolygonTest(poly, (float(cx), float(cy)), True) < r + margin_px:
+            continue
         if all(np.hypot(cx - tx, cy - ty) > r + tr + spacing_px for tx, ty, tr in taken):
             return cx, cy, r
     return None
@@ -145,10 +151,17 @@ def do_background(job):
     ss, fx, cc = s["supersample"], s["flag_effects"], s["compose"]
     margin = b["edge_margin_m"] / gsd
     spacing = s["min_spacing_m"] / gsd
+    f_px = (W / 2) / math.tan(math.radians(hfov) / 2)
+    # a tilted photo is zoomed in (= seen from lower): keep it at >= the lowest altitude
+    max_mag = max(1.0, gsd * f_px / s["altitude_m"][0])
+    blur_cfg = {"defocus_prob": 0.0, "defocus_sigma_px": [0.0, 0.0], "motion_prob": 0.0,
+                "speed_mps": s["camera_sim"]["speed_mps"], "exposure_s": s["camera_sim"]["exposure_s"],
+                **(b.get("blur") or {})}
     rows = []
     for im in images:
         rng = np.random.default_rng([s["seed"], 3, bg["index"], im["variant"]])
         k = int(rng.integers(4)) if b["random_flip"] else 0
+        view = sample_view(rng, b.get("view"), W, H, f_px, mode="zoom", max_magnification=max_mag)
         frame = flip(photo, k).copy()
         scene = make_scene(frame, rng, cc)
         match = for_image(photo_look, rng, b["match_camera"])
@@ -156,16 +169,30 @@ def do_background(job):
         for c in im["classes"]:
             obj = render_object(G["flags"][c], (Lm, Sm), gsd, ss, rng, fx)
             Lp, Sp = obj.long_px / ss, obj.short_px / ss
-            spot = find_spot(rng, W, H, Lp, Sp, margin, taken, spacing)
+            for _ in range(20):                      # the flag must end up fully in the picture
+                spot = find_spot(rng, view["quad"], Lp, Sp, margin, taken, spacing)
+                if spot is None:
+                    break
+                cx, cy, r = spot
+                angle = rng.uniform(0, 360)
+                dst = object_corners((cx, cy), angle, Lp, Sp, rng, fx["tilt_jitter"])
+                out_pts = warp_points(dst, view)
+                if (out_pts.min(axis=0) >= margin / 2).all() and (out_pts + margin / 2 <= (W, H)).all():
+                    break
+                spot = None
             if spot is None:
                 no_room.append(names[c])
                 continue
-            cx, cy, r = spot
-            angle = rng.uniform(0, 360)
-            dst = object_corners((cx, cy), angle, Lp, Sp, rng, fx["tilt_jitter"])
             info = place_object(frame, obj, dst, ss, rng, cc, scene, gsd, match=match)
             taken.append((cx, cy, r))
             flags.append({"cls": c, "corners": dst, "angle": angle, "effects": info})
+        # camera: tilt (pixels and corners through the same matrix), then blur on the
+        # whole picture so the flags are exactly as soft as the ground
+        frame = warp_frame(frame, view, W, H)
+        for f in flags:
+            f["corners"] = warp_points(f["corners"], view)
+        gsd_out = gsd / view["magnification"]
+        frame, blur = apply_blur(frame, gsd_out, rng, blur_cfg)
         kept, _ = window_labels(flags, 0, 0, W, H, s["min_visible_fraction"])
         look = None
         if b.get("look"):                            # some images get a reference dataset's look
@@ -178,14 +205,19 @@ def do_background(job):
         first = save(run, "detect", bg["split"], stem, buf.tobytes(), [detect_line(l, W, H) for l in kept])
         save(run, "obb", bg["split"], stem, first, [obb_line(l, W, H) for l in kept])
         if stem in preview_stems:
-            title = (f"{stem} | {bg['split']} | GSD {gsd * 100:.2f} cm/px | 2 m flag = {Lm / gsd:.0f} px"
-                     f" | look: {look['look'] if look else 'photo as is'} | {bg['path'].name}")
+            tilt = f"tilt {view['tilt_deg']:.1f} deg" if is_tilted(view) else "straight down"
+            blurred = " ".join(f"{k} {v}" for k, v in blur.items()) or "no extra blur"
+            title = (f"{stem} | {bg['split']} | GSD {gsd_out * 100:.2f} cm/px | 2 m flag = {Lm / gsd_out:.0f} px"
+                     f" | {tilt} | {blurred} | look: {look['look'] if look else 'photo as is'}"
+                     f" | {bg['path'].name}")
             cv2.imwrite(str(run / "previews" / f"{stem}.jpg"),
                         preview(out, kept, names, title), [cv2.IMWRITE_JPEG_QUALITY, 90])
         rows.append({
             "image": f"{stem}.jpg", "split": FOLDER[bg["split"]], "background": bg["path"].name,
-            "group": bg["group"], "width": W, "height": H, "gsd_cm": round(gsd * 100, 3),
-            "scale_from": bg["scale_from"], "flag_long_px": round(Lm / gsd, 1), "flip": k,
+            "group": bg["group"], "width": W, "height": H, "gsd_cm": round(gsd_out * 100, 3),
+            "scale_from": bg["scale_from"], "flag_long_px": round(Lm / gsd_out, 1), "flip": k,
+            "tilt_deg": view["tilt_deg"], "tilt_zoom": view.get("zoom", 1.0),
+            "defocus_sigma_px": blur.get("defocus_sigma_px", ""), "motion_px": blur.get("motion_px", ""),
             "n_flags": len(kept), "countries": " ".join(names[l["cls"]] for l in kept),
             "no_room": " ".join(no_room), "blur_sigma_px": round(match["blur_sigma"], 3),
             "noise_sigma": round(photo_look["noise"], 4),

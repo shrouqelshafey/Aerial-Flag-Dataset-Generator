@@ -257,13 +257,17 @@ synthesis:
       - sparse_desert_vegetation
       - concrete_airfield
 
-    background_distribution:      # competition site: flat desert airfield
-      desert_sand: 0.45
-      compacted_soil: 0.15
-      dry_gravel: 0.10
-      sandy_ground: 0.10
-      sparse_desert_vegetation: 0.05
-      concrete_airfield: 0.15
+    # competition site: flat desert airfield. Most weight on the real drone-map ground
+    # (desert_sand, compacted_soil: 13 textures, 37 ha). concrete_airfield is ONE small
+    # Texas strip and the other three types are small photos patched together: raise
+    # them again when real airfield / gravel imagery is added.
+    background_distribution:
+      desert_sand: 0.50
+      compacted_soil: 0.20
+      dry_gravel: 0.08
+      sandy_ground: 0.07
+      sparse_desert_vegetation: 0.07
+      concrete_airfield: 0.08
 
     terrain:
       randomize: true
@@ -301,7 +305,7 @@ image_effects:
     intensity: null
 
   motion_blur:
-    enabled: false
+    enabled: true                 # length from drone speed x exposure (generator.camera_sim)
     probability: 0.30
     model: "directional"
     calibration_status: "pending"
@@ -316,8 +320,8 @@ image_effects:
     range: [0.85, 1.15]
 
   defocus_blur:
-    enabled: false
-    probability: 0.05
+    enabled: true                 # lens softness, sigma from generator.camera_sim
+    probability: 0.40
     calibration_status: "pending"
 
   compression:
@@ -638,6 +642,15 @@ generator:
     shot_noise: [0.0005, 0.004]
     gamma: [0.9, 1.1]
 
+  # Camera tilt (generator/view.py): the gimbal is not exactly straight down. The
+  # whole picture is turned by `tilt_deg` towards a random side: the far side looks
+  # smaller, the near side bigger (about +-20 % flag size at 10 deg). Exact: the ground
+  # the tilted camera sees is built straight down, then warped with K R K^-1, and the
+  # flag corners (labels) go through the same matrix. prob 0 = always straight down.
+  view:
+    prob: 0.5
+    tilt_deg: [0, 10]
+
   keep_empty_tile_prob: 0.10        # most tiles with no flag are dropped
   preview_frames: 12                # annotated previews written per run
 
@@ -655,6 +668,13 @@ generator:
     focus_share: 0.60               # Egypt is in exactly 60 % of the images with flags
     random_flip: true               # each image of a photo: random flip / 180 deg turn
     edge_margin_m: 1.0              # flags stay fully inside the picture
+    view:                           # camera tilt on the real photo (generator/view.py)
+      prob: 0.5                     # a photo has no ground outside it, so the tilted picture is
+      tilt_deg: [0, 4]              # zoomed in to fill its corners (1.1x at 3 deg): keep it small
+    blur:                           # extra blur on the WHOLE picture, flags and ground alike
+      defocus_prob: 0.3
+      defocus_sigma_px: [0.3, 1.0]
+      motion_prob: 0.3              # length = speed x exposure / GSD (generator.camera_sim)
     match_camera:                   # give the flag the photo's own camera look (generator/match.py)
       blur_sigma_px: [0.4, 1.2]     # lens softness (real flags in the reference photos are soft)
       noise: true                   # same sensor noise as the photo

@@ -37,6 +37,31 @@ def motion_kernel(length_px: float, angle_rad: float) -> np.ndarray:
     return ker / ker.sum()
 
 
+def apply_blur(img, gsd, rng, c):
+    """Lens defocus, then motion during the exposure, on the WHOLE picture (flags and
+    ground together, so a flag is never sharper than the ground around it).
+
+    c: defocus_prob, defocus_sigma_px [lo, hi], motion_prob, speed_mps [lo, hi],
+       exposure_s [lo, hi]. Motion length (px) = speed (m/s) * exposure (s) / GSD (m/px).
+    """
+    p = {}
+    if rng.random() < c["defocus_prob"]:
+        sigma = uniform(rng, c["defocus_sigma_px"])
+        img = cv2.GaussianBlur(img, (0, 0), sigma)
+        p["defocus_sigma_px"] = round(sigma, 3)
+
+    if rng.random() < c["motion_prob"]:
+        speed = uniform(rng, c["speed_mps"])
+        lo, hi = c["exposure_s"]
+        exposure = math.exp(rng.uniform(math.log(lo), math.log(hi)))   # log-uniform
+        length = speed * exposure / gsd
+        if length >= 0.5:
+            img = cv2.filter2D(img, -1, motion_kernel(length, rng.uniform(0, 2 * np.pi)),
+                               borderType=cv2.BORDER_REFLECT)
+        p["motion_px"] = round(length, 3)
+    return img, p
+
+
 def apply_camera(img, gsd, rng, c):
     """img: float32 BGR 0..1. Returns (uint8 BGR image, dict of what was applied)."""
     h, w = img.shape[:2]
@@ -60,21 +85,8 @@ def apply_camera(img, gsd, rng, c):
         img = img * (1 - s * r2)[..., None]
         p["vignette"] = round(s, 3)
 
-    if rng.random() < c["defocus_prob"]:
-        sigma = uniform(rng, c["defocus_sigma_px"])
-        img = cv2.GaussianBlur(img, (0, 0), sigma)
-        p["defocus_sigma_px"] = round(sigma, 3)
-
-    if rng.random() < c["motion_prob"]:
-        # blur length (px) = speed (m/s) * exposure (s) / GSD (m/px)
-        speed = uniform(rng, c["speed_mps"])
-        lo, hi = c["exposure_s"]
-        exposure = math.exp(rng.uniform(math.log(lo), math.log(hi)))   # log-uniform
-        length = speed * exposure / gsd
-        if length >= 0.5:
-            img = cv2.filter2D(img, -1, motion_kernel(length, rng.uniform(0, 2 * np.pi)),
-                               borderType=cv2.BORDER_REFLECT)
-        p["motion_px"] = round(length, 3)
+    img, pb = apply_blur(img, gsd, rng, c)
+    p.update(pb)
 
     read, shot = uniform(rng, c["read_noise"]), uniform(rng, c["shot_noise"])
     img = np.clip(img, 0, 1)

@@ -145,6 +145,7 @@ def load_settings(path=DEFAULT_CONFIG, seed=None) -> dict:
             "kinds": dist["kinds"],
         },
         "camera_sim": camera_sim,
+        "view": dict(g.get("view") or {}),            # camera tilt (generator/view.py)
         "jpeg_quality": int(comp["jpeg_quality"]) if comp.get("enabled", True) else 95,
         "output_dir": ROOT / cfg["dataset"]["output_directory"],
         "image_prefix": cfg["dataset"]["image_naming"]["prefix"],

@@ -35,7 +35,7 @@ One frame = 10 steps, one module each in `generator/`:
 | 3 Flag | `flags.py`, `flag_render.py` | artwork from `assets/flags` put on a 2:1 sheet without stretching, drawn 4x larger with fabric folds |
 | 4-5 Placement, blending | `compose.py` | random position + rotation, one homography moves pixels AND corners, soft edge + contact shadow |
 | 6 Distractors | `distractors.py` | unlabelled tarps, fabric, cars (layer, off by default) |
-| 7 Camera | `camera.py` | brightness / contrast, then (when switched on) haze, blur, motion blur, noise |
+| 7 Camera | `view.py`, `camera.py` | camera tilt (gimbal not exactly straight down, `generator.view`: half the frames, 0-10 deg; flags on the far side smaller, near side bigger), then brightness / contrast, lens blur (40 %), motion blur from drone speed x exposure (30 %), and (when switched on) haze, noise |
 | 8 Labels | `labels.py` | corners clipped to the frame; labelled if >= 50 % visible and box >= 10 x 5 px |
 | 9 Tiles | `tiling.py` | 1024 px tiles with 20 % overlap |
 | 10 Split + save | `split.py`, `writer.py` | train/val/test split BY BACKGROUND, JPEG quality 92 |
@@ -95,6 +95,10 @@ Best practices built in:
   ground around it is a shortcut the model learns instead of the flag.
 - Rendered 4x larger and shrunk (soft, correct edges), random angle 0-360 deg, folds and
   contact shadow, fully inside the picture, never overlapping.
+- **Camera tilt and blur** (`generator.batch.view`, `generator.batch.blur`): half the images
+  are seen 0-4 deg off straight down. A photo has no ground outside it, so the tilted picture
+  is zoomed in to fill its corners (at most about 1.2x, never below the lowest altitude). Then
+  30 % get extra lens blur and 30 % motion blur, on the whole picture: flag and ground alike.
 - **Reference look** (`generator/look.py`, `generator.batch.look`): half of the images get the
   colour and contrast measured on the Roboflow Universe datasets uavc/flags_gamed_awy (bright,
   flat, pale sand; pastel flags) and uavc/uav2024-flags (airfield). Gains for white balance, then
@@ -116,10 +120,17 @@ python tools/cut_orthomosaics.py
 ```
 
 It cuts 200 camera frames (3840 x 2160, random 50-100 m, exact `gsd_m` in `index.yaml`) into
-`assets/batch_backgrounds/` and 11 large ground textures into `assets/backgrounds/` for
-`generate.py`. Each map is divided into cells bigger than a 100 m frame; a cell is one split
-group, so train / valid / test never share ground. Black map borders are never used. It
-rewrites only its own marked block in each `index.yaml`, so your own photos stay listed.
+`assets/batch_backgrounds/` and 14 large ground textures (37.5 ha of real ground) into
+`assets/backgrounds/` for `generate.py`:
+- one texture per map cell: the biggest clean square in it (up to 176 m, so even a 100 m
+  frame is one piece of real ground, never patched together);
+- 3 long strips (about 340 x 85 m) from the ground outside the cells, always train.
+
+Each map is divided into cells bigger than a 100 m frame; a cell is one split group, and its
+split is written into BOTH `index.yaml` files (`split:`). So a cell is in the same split in
+`generate.py` and `generate_batch.py`: the ground of the batch's valid/test images is never in
+`generate.py`'s training images (8 cells train, 2 valid, 1 test). Black map borders are never
+used. It rewrites only its own marked block in each `index.yaml`, so your own photos stay listed.
 
 No maps? `python tools/make_demo_backgrounds.py --n 200` builds 200 stand-in frames
 from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/batch_backgrounds_demo`.
@@ -135,13 +146,15 @@ from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/b
   `python tools/flags/make_syria_old.py`. New classes are always added at the END of
   `countries.class_names`, so the ids of older labels never change. A class whose image is
   removed keeps its class id and is simply not drawn.
-- **Backgrounds:** the 11 textures cut from the drone maps have exact GSDs and each covers a
+- **Backgrounds:** the 14 textures cut from the drone maps have exact GSDs and each covers a
   whole frame. The 9 older photos in `assets/backgrounds/index.yaml` have GSDs estimated by
-  eye, and several cover only 15-30 m of ground, so their texture repeats in an 85-170 m
-  frame. Ground types are weighted towards the competition site (flat desert sand 45 %,
-  airfield 15 %, vegetation 5 %: `background_distribution` in config.yaml). Still missing:
-  a real desert AIRFIELD (the only airfield map is a small grass-and-concrete strip) and
-  photos of the competition site itself. `germany.png` (a flag) and `Western Desert.png`
+  eye, and several cover only 15-30 m of ground, so they are patched together in an
+  85-170 m frame. Ground types are weighted towards the competition site
+  (`background_distribution` in config.yaml: desert sand 50 %, compacted soil 20 %, airfield
+  8 %, the photo-only types 7-8 % each), and inside a type every file is used in proportion
+  to the ground it covers, so every square metre repeats about equally. Still missing:
+  a real desert AIRFIELD (the only airfield map is one small grass-and-concrete strip, hence
+  only 8 %) and photos of the competition site itself. `germany.png` (a flag) and `Western Desert.png`
   (satellite scale) are excluded.
 - **Distractors:** the photos have a painted checkerboard instead of transparency; only
   their clean centre is used (`assets/distractors/index.yaml`).
