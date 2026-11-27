@@ -590,6 +590,12 @@ generator:
   # P(number of flags) in a frame that is NOT a negative image.
   # Negatives come from dataset.negative_image_ratio.
   flags_per_image: {1: 0.25, 2: 0.30, 3: 0.25, 4: 0.20}
+  # Flags that are hard to tell apart get a bigger share of all flags (the rest share
+  # what is left equally). Egypt / Iraq / Syria / Yemen are all red-white-black from the
+  # air: only the small emblem differs, so the model needs many more examples of them.
+  focus_classes:
+    classes: [egypt, iraq, syria, syria_old, yemen]
+    share: 0.40               # 40 % of all flags (0 = every country equally often)
   partial_flag_prob: 0.10     # chance a flag straddles the frame edge
   min_spacing_m: 1.0          # flags / distractors never closer than this
 

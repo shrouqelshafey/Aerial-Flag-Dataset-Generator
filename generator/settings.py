@@ -46,6 +46,14 @@ def load_settings(path=DEFAULT_CONFIG, seed=None) -> dict:
     tot = sum(pos.values())
     flags_per_image = {0: neg, **{k: (1 - neg) * v / tot for k, v in pos.items()}}
 
+    names = list(cfg["countries"]["class_names"])
+    fc = g.get("focus_classes") or {}
+    unknown = [c for c in fc.get("classes", []) if c not in names]
+    if unknown:
+        raise KeyError(f"generator.focus_classes: not in countries.class_names: {unknown}")
+    focus = {"classes": [names.index(c) for c in fc.get("classes", [])],
+             "share": float(fc.get("share", 0.0))}
+
     place = cfg["flag"]["placement"]
     partial = g["partial_flag_prob"] if place.get("allow_partial_image_truncation", True) \
         and not place.get("avoid_image_truncation", False) else 0.0
@@ -119,6 +127,7 @@ def load_settings(path=DEFAULT_CONFIG, seed=None) -> dict:
         "flag_size_m": [float(cfg["flag"]["physical_width_m"]), short_m],
         "supersample": int(g["supersample"]),
         "flags_per_image": flags_per_image,
+        "focus": focus,                               # bigger share for look-alike flags
         "allow_partial_prob": float(partial),
         "min_visible_fraction": float(ann["minimum_visible_fraction"]),
         "min_box_px": (float(ann["minimum_bbox_width_px"]), float(ann["minimum_bbox_height_px"])),

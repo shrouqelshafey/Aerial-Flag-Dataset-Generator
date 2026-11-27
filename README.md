@@ -63,6 +63,8 @@ config_used.yaml  summary.json
 ```
 
 Train YOLO with `frames/detect/data.yaml` or `tiles/detect/data.yaml` (or the `obb` ones).
+For Roboflow, `python tools/export_roboflow.py dataset/<run> --zip` writes
+`roboflow_detect/` (train / valid / test + data.yaml, split kept) and its `.zip`.
 `dataset/` is not committed; regenerate it with the same seed to get the same images.
 
 ### Batch on real backgrounds (Roboflow test set)
@@ -141,7 +143,8 @@ from `assets/backgrounds`; then `python generate_batch.py --backgrounds assets/b
   (united_states = `america.png`). The 26 added later are the public-domain flags from
   flagcdn.com (1280 px wide). Classes 28-31 (iraq, yemen, syria, syria_old) are the
   red-white-black tricolours that look like Egypt from the air: the model must learn the
-  emblem, not just the stripes. `syria` is the flag used since March 2025 (green-white-black,
+  emblem, not just the stripes, so `generator.focus_classes` gives Egypt and these four 40 %
+  of all flags in `generate.py` (the other 27 share the rest; `share: 0` = all equal). `syria` is the flag used since March 2025 (green-white-black,
   three red stars); `syria_old` (red-white-black, two green stars) is built from it by
   `python tools/flags/make_syria_old.py`. New classes are always added at the END of
   `countries.class_names`, so the ids of older labels never change. A class whose image is

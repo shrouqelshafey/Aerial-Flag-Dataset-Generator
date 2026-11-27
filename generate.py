@@ -53,10 +53,21 @@ def init_worker(s, run_dir, variants):
     L, S = s["flag_size_m"]
     G["flags"], G["missing"] = load_flag_textures(s["flags_dir"], s["classes"], s["flag_files"], L / S)
     G["drawable"] = sorted(G["flags"])        # class ids that have a flag image
+    G["class_p"] = class_weights(G["drawable"], s["focus"])
     G["distractor_images"] = load_distractor_images(s["distractors"]["dir"]) \
         if s["distractors"]["enabled"] else []
     G["split_groups"] = assign_groups(G["bg"].groups(), s["split"], s["seed"], G["bg"].fixed_splits())
     G["writer"] = DatasetWriter(run_dir, s["classes"], s["jpeg_quality"], variants)
+
+
+def class_weights(drawable, focus):
+    """P(class) per drawn flag: the focus classes share `share`, the rest share the remainder."""
+    fset = [c for c in focus["classes"] if c in drawable]
+    share = focus["share"] if fset and len(fset) < len(drawable) else 0.0
+    if share <= 0:
+        return np.full(len(drawable), 1.0 / len(drawable))
+    rest = len(drawable) - len(fset)
+    return np.array([share / len(fset) if c in fset else (1 - share) / rest for c in drawable])
 
 
 def sample_count(rng, dist):
@@ -129,7 +140,8 @@ def generate_one(idx):
     Lm, Sm = s["flag_size_m"]
     drawable = G["drawable"]
     n_flags = min(sample_count(rng, s["flags_per_image"]), len(drawable))
-    cls_ids = rng.choice(drawable, size=n_flags, replace=False) if n_flags else []
+    # no country twice in a frame; look-alike flags (generator.focus_classes) more often
+    cls_ids = rng.choice(drawable, size=n_flags, replace=False, p=G["class_p"]) if n_flags else []
     spacing = s["min_spacing_m"] / gsd
     taken, flags, no_room = [], [], []
     for c in cls_ids:
@@ -268,6 +280,11 @@ def main():
           f"{L:.0f} m flag = {cam.size_px(L, a0):.0f}-{cam.size_px(L, a1):.0f} px")
     have = [s["classes"][c] for c in G["drawable"]]
     print(f"Flags: {len(have)} of {len(s['classes'])} classes have an image: {', '.join(have)}")
+    fc = [s["classes"][c] for c in s["focus"]["classes"] if c in G["drawable"]]
+    if fc and s["focus"]["share"] > 0:
+        print(f"Focus: {', '.join(fc)} get {s['focus']['share']:.0%} of all flags "
+              f"({s['focus']['share'] / len(fc):.1%} each, the others "
+              f"{(1 - s['focus']['share']) / (len(have) - len(fc)):.1%} each)")
     if G["missing"]:
         print(f"  no image yet (not drawn, class ids kept): {', '.join(G['missing'])}")
     bgl = G["bg"]
